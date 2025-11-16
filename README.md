@@ -71,6 +71,7 @@ Follow the [installation instructions](https://srgan.opensr.eu/getting-started/i
 
 ## 🚀 Quickstart
 
+* To test the package immediately, launch the Google Colab right now and follow along the introduction! [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/16W0FWr6py1J8P4po7JbNDMaepHUM97yL?usp=sharing) 
 * **Datasets:** Grab the bundled example dataset or learn how to register your own sources in the [data guide](https://srgan.opensr.eu/data/).
 * **Training:** Launch training with `python -m opensr_srgan.train --config opensr_srgan/configs/config.yaml` or import `train` from the package as described in the [training walkthrough](https://srgan.opensr.eu/getting-started/training/).
 * **Inference:** Ready-made presets and large-scene pipelines are described in the [inference section](https://srgan.opensr.eu/getting-started/inference/).
