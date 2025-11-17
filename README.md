@@ -65,7 +65,7 @@ The YAML keeps the SRGAN flexible: swap architectures or rebalance perceptual vs
 
 ## 🧰 Installation
 
-Follow the [installation instructions](https://srgan.opensr.eu/getting-started/installation/) for package, source, and dependency setup options.
+Follow the [installation instructions](https://srgan.opensr.eu/getting-started/) for package, source, and dependency setup options.
 
 ---
 
@@ -73,14 +73,14 @@ Follow the [installation instructions](https://srgan.opensr.eu/getting-started/i
 
 * To test the package immediately, launch the Google Colab right now and follow along the introduction! [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/16W0FWr6py1J8P4po7JbNDMaepHUM97yL?usp=sharing) 
 * **Datasets:** Grab the bundled example dataset or learn how to register your own sources in the [data guide](https://srgan.opensr.eu/data/).
-* **Training:** Launch training with `python -m opensr_srgan.train --config opensr_srgan/configs/config.yaml` or import `train` from the package as described in the [training walkthrough](https://srgan.opensr.eu/getting-started/training/).
+* **Training:** Launch training with `python -m opensr_srgan.train --config opensr_srgan/configs/config.yaml` or import `train` from the package as described in the [training walkthrough](https://srgan.opensr.eu/training/).
 * **Inference:** Ready-made presets and large-scene pipelines are described in the [inference section](https://srgan.opensr.eu/getting-started/inference/).
 
 ---
 
 ## 🏗️ Configuration & Stabilization
 
-All tunable knobs—architectures, loss weights, schedulers, and EMA—are exposed via YAML files under `opensr_srgan/configs`. Strategy tips for warm-ups, adversarial ramps, and EMA usage are summarised in the [training concepts chapter](https://srgan.opensr.eu/training/concepts/).
+All tunable knobs—architectures, loss weights, schedulers, and EMA—are exposed via YAML files under `opensr_srgan/configs`. Strategy tips for warm-ups, adversarial ramps, and EMA usage are summarised in the [training concepts chapter](https://srgan.opensr.eu/training-guideline/).
 
 
 ## 📂 Repository Structure
