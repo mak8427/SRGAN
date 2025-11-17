@@ -40,36 +40,7 @@ if "pytorch_lightning" not in sys.modules:
     pl_stub.__version__ = "2.1.0"
     sys.modules["pytorch_lightning"] = pl_stub
 
-
-MODULE_NAME = "opensr_srgan.utils.build_trainer_kwargs"
-MODULE_PATH = (
-    Path(__file__).resolve().parents[3]
-    / "opensr_srgan"
-    / "utils"
-    / "build_trainer_kwargs.py"
-)
-
-
-if "opensr_srgan" not in sys.modules:
-    pkg_stub = types.ModuleType("opensr_srgan")
-    pkg_stub.__path__ = []  # mark as package
-    sys.modules["opensr_srgan"] = pkg_stub
-
-if "opensr_srgan.utils" not in sys.modules:
-    utils_stub = types.ModuleType("opensr_srgan.utils")
-    utils_stub.__path__ = []
-    sys.modules["opensr_srgan.utils"] = utils_stub
-
-spec = importlib.util.spec_from_file_location(MODULE_NAME, MODULE_PATH)
-build_module = importlib.util.module_from_spec(spec)
-sys.modules[MODULE_NAME] = build_module
-assert spec.loader is not None  # for type checkers
-spec.loader.exec_module(build_module)
-sys.modules["opensr_srgan.utils"].build_trainer_kwargs = build_module
-sys.modules["opensr_srgan"].utils = sys.modules["opensr_srgan.utils"]
-
-
-build_lightning_kwargs = build_module.build_lightning_kwargs
+from opensr_srgan.utils.build_trainer_kwargs import build_lightning_kwargs
 
 
 def _make_config(**training_overrides):

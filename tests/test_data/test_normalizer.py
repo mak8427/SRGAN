@@ -3,8 +3,7 @@ from types import SimpleNamespace
 import torch
 
 from opensr_srgan.data.utils.normalizer import Normalizer
-from opensr_srgan.tests.helpers import custom_norms
-
+from tests.helpers import custom_norms
 
 def _build_cfg(value):
     return SimpleNamespace(Data=SimpleNamespace(normalization=value))
@@ -28,8 +27,8 @@ def test_custom_strategy_roundtrip_via_import_path():
     cfg = _build_cfg(
         {
             "name": "custom",
-            "normalize": "opensr_srgan.tests.helpers.custom_norms:halve",
-            "denormalize": "opensr_srgan.tests.helpers.custom_norms:double",
+            "normalize": "tests.helpers.custom_norms:halve",
+            "denormalize": "tests.helpers.custom_norms:double",
         }
     )
 

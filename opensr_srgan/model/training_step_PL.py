@@ -205,7 +205,10 @@ def training_step_PL2(self, batch, batch_idx):
     opt_d, opt_g = self.optimizers()
 
     # optional gradient clipping support (norm-based)
-    gradient_clip_val = self.config.Schedulers.get("gradient_clip_val", 0.0)
+    try:
+        gradient_clip_val = self.config.Schedulers.gradient_clip_val
+    except AttributeError:
+        gradient_clip_val = 0.0
 
     def _maybe_clip_gradients(module, optimizer=None):
         if gradient_clip_val > 0.0 and module is not None:

@@ -1,6 +1,8 @@
 name: Create GH tagged Release
 
 on:
+  workflow_dispatch:
+
   push:
     tags:
       - "v*"   # triggers for any tag starting with 'v'
