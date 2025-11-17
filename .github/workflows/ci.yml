@@ -5,8 +5,18 @@
 
 name: CI Tests
 on:
+  # 1) manual run from the Actions tab
+  workflow_dispatch:
+
+  # 2) tagged releases (v*) 
+  # 3) any branch push that changes files under tests/
   push:
-    tags: [ 'v*' ]    # CI only runs on tagged releases like v1.2.3
+    branches:
+      - '**'        # allow all branches (needed so branches still trigger)
+    tags:
+      - 'v*'        # run on tags like v1.2.3
+    paths:
+      - 'tests/**'  # only run on branch pushes if something in tests/ changed
 
 
 jobs:
