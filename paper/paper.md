@@ -58,7 +58,7 @@ Building on these successes, the computer-vision community introduced the Super-
 Recent advances in diffusion and transformer-based architectures have shifted the state of the art in image super-resolution toward generative models with stronger probabilistic and contextual reasoning [@s1; @s2; @s3].  
 Nevertheless, GAN-based approaches continue to be actively explored [@g1] and remain a practical choice for operational production settings [@allen].
 
-# Problem Statement
+# Statement of Need
 
 Despite their success in computer vision, GANs remain notoriously difficult to train [@p1; @p2; @p3]. The simultaneous optimization of generator and discriminator networks often leads to unstable dynamics, mode collapse, and high sensitivity to hyperparameters. In remote-sensing applications, these issues are amplified by domain-specific challenges such as multispectral or hyperspectral inputs, high dynamic range reflectance values, varying sensor characteristics, and limited availability of perfectly aligned high-resolution ground-truth data. Moreover, researchers in remote sensing rarely work with fixed RGB imagery. They frequently need to adapt existing GAN architectures to support arbitrary numbers of spectral bands, retrain models for different satellite sensors (e.g., Sentinel-2, SPOT, Pleiades, PlanetScope), or implement benchmarks for newly collected datasets. These modifications usually require non-trivial changes to the model architecture, preprocessing pipeline, and loss configuration, making reproducibility and experimentation cumbersome. Implementing the full set of heuristics that make GAN training stable, such as generator pretraining, adversarial loss ramping, label smoothing, learning-rate warmup, and exponential moving-average (EMA) tracking, adds another layer of complexity. Consequently, reproducing and extending GAN-based SR models in the Earth-Observation (EO) domain is often time-consuming, fragile, and inconsistent across studies.
 
@@ -91,7 +91,7 @@ The system consists of four main components:
 
 ## Generator Architectures
 
-The generator network can be configured with different backbone types, each providing a unique trade-off between complexity, receptive field, and textural detail (see Table~\ref{tab:arch} in~\ref{app:components}).  
+The generator network can be configured with different backbone types, each offering a different balance between complexity, receptive field, and textural detail.
 
 The `Generator` class provides a unified implementation of SR backbones that share a common convolutional structure while differing in their internal residual block design.
 The module is initialized with a `model_type` flag selecting one of `res`, `rcab`, `rrdb`, `lka`, `esrgan`, `cgan`, each drawn from a shared registry of block factories or dedicated ESRGAN implementation.
@@ -106,22 +106,41 @@ This modular structure allows researchers to experiment with different block des
 
 ## Discriminator Architectures
 
-The discriminator can be selected to prioritize either global consistency or fine local realism. The different architectures and their purposes are outlined in Table~\ref{tab:disc} in~\ref{app:components}. Three discriminator variants are implemented to complement the different generator types: a global `Discriminator`, a local `PatchGANDiscriminator`, and the deeper `ESRGANDiscriminator`. All are built from shared convolutional blocks with LeakyReLU activations and instance normalization.
+The discriminator can be selected to prioritize either global consistency or fine local realism. The different discriminator variants are designed to capture different aspects of realism, from global structure to fine-grained texture. Three discriminator variants are implemented to complement the different generator types: a global `Discriminator`, a local `PatchGANDiscriminator`, and the deeper `ESRGANDiscriminator`. All are built from shared convolutional blocks with LeakyReLU activations and instance normalization.
 
 The standard discriminator follows the original SRGAN [@ledig2017photo] design and evaluates the realism of the entire super-resolved image and the actual HR image. It stacks a sequence of strided convolutional layers with progressively increasing feature channels, an adaptive average pooling layer to a fixed spatial size, and two fully connected layers producing a scalar real/fake score. This 'global' discriminator promotes coherent large-scale structure and overall photorealism.
 
 The `PatchGANDiscriminator` instead outputs a grid of patch-level predictions, classifying each overlapping region as real or fake. Built upon the CycleGAN/pix2pix [@cyclegan; @px2px] reference implementation, it uses a configurable number of convolutional layers and normalization schemes (batch, instance, or none). The resulting patch map acts as a spatial realism prior, emphasizing texture fidelity and fine detail.
 
-Finally, the `ESRGANDiscriminator` mirrors the deeper VGG-style stack from ESRGAN. Its `base_channels` and fully connected `linear_size` can be tuned to match the generator capacity, offering an aggressive adversarial signal when paired with RRDB-based generators.
+The `ESRGANDiscriminator` mirrors the deeper VGG-style stack from ESRGAN. Its `base_channels` and fully connected `linear_size` can be tuned to match the generator capacity, offering an aggressive adversarial signal when paired with RRDB-based generators.
 
 Together, these architectures allow users to select the appropriate adversarial granularity: global consistency through SRGAN-style discrimination, local realism through PatchGAN, or sharper perceptual contrast via ESRGAN.
 
+Finally, all discriminator variants optionally support spectral normalization, a weight-normalisation technique that stabilises GAN training by constraining the Lipschitz constant of each layer. When enabled, the convolutional and linear layers in the discriminator are wrapped with a spectral-normalisation operator that estimates their dominant singular value, preventing overly sharp or oscillatory discriminator behaviour. This stabilisation mechanism follows the formulation of [@miyato]. Spectral normalization is activated directly from the configuration file and is compatible with all discriminator types (Global, PatchGAN, ESRGAN-style).
+
 # Training Features
 
-Training stability is improved through several built-in mechanisms that address common issues of adversarial optimization (summarized in Table~\ref{tab:train}, ~\ref{app:components}). These are configured in the `Training` section of the YAML `config` file.
+Training stability is improved through several built-in mechanisms that address the common pitfalls of adversarial optimization. These are configured in the `Training` section of the YAML `config` file.
 
 ## General Training Optimizations
 Several additional methods contribute to stable adversarial optimization. Label smoothing replaces hard discriminator targets (1 for real, 0 for fake) with softened values such as 0.9 and 0.1, preventing overconfidence and promoting smoother gradients. A short generator warmup phase allows $G$ to learn basic low-frequency structure before adversarial feedback is introduced, often combined with a linear or cosine learning-rate ramp to avoid abrupt updates. The discriminator holdback delays $D$ updates for the first few epochs so that $G$ can stabilise; when enabled, $D$ also follows a short warmup schedule to balance learning rates. Finally, both optimisers employ adaptive scheduling via `ReduceLROnPlateau`, lowering the learning rate when progress stagnates. These implementations mitigate divergence and improve convergence stability in adversarial training. All of these techniques can be configured from the `config` file as the unified entry-point.
+
+## Wasserstein GAN
+When the adversarial mode is set to Wasserstein GAN (WGAN), the discriminator is reinterpreted as a critic, producing unbounded real-valued scores rather than probabilities. In this formulation, the losses become:
+
+$$
+\mathcal{L}_D = \mathbb{E}[D(\hat{y})] - \mathbb{E}[D(y)]
+\qquad\text{and}\qquad
+\mathcal{L}_G = -\,\mathbb{E}[D(\hat{y})].
+$$
+
+This removes the need for a sigmoid activation and mitigates the vanishing-gradient issues typical of Jensen–Shannon GANs, following the Wasserstein GAN formulation of Arjovsky et al. (2017) [@arjovsky2017wasserstein]. Instead of weight clipping, OpenSR-SRGAN can be configured to use the R1 gradient penalty, which regularises the critic by penalising the squared gradient of the real-data scores [@mescheder2018r1]:
+
+$$
+\mathcal{L}_{\text{R1}} = \frac{\gamma}{2}\,\mathbb{E}\big[\lVert \nabla_y D(y) \rVert^2\big].
+$$
+
+This promotes smooth critic behaviour near the real data manifold, substantially improving stability in multispectral settings. The WGAN+R1 setup integrates seamlessly with the existing training features—generator warmup, label smoothing, EMA, and LR ramping—while offering a more robust adversarial objective.
 
 ## Exponential Moving Average (EMA) Stabilisation
 
@@ -141,7 +160,9 @@ where $\hat{y}_{\text{SR}}$ denotes the final super-resolved output produced by 
 
 ## Loss Functions
 
-Each loss term (see Table~\ref{tab:loss} in~\ref{app:components}) can be weighted independently, allowing users to balance spectral accuracy and perceptual realism. Typical configurations combine L1, Perceptual, and Adversarial losses, optionally augmented by SAM and TV for multispectral consistency and smoothness. The overall objective is a weighted sum of these terms defined in the `Training.Losses ` section of the configuration. A detailed description of the internal training and validation metrics logged alongside these losses is given in ~\ref{tab:metrics}.
+Each loss term can be weighted independently, allowing users to balance spectral accuracy and perceptual realism. Typical configurations combine L1, Perceptual, and Adversarial losses, optionally augmented by SAM and TV for multispectral consistency and smoothness. The overall objective is a weighted sum of these terms defined in the `Training.Losses ` section of the configuration. The framework also logs a comprehensive set of training and validation metrics alongside these losses.
+
+In addition to classical adversarial, pixel, and perceptual losses, the framework supports a Wasserstein adversarial loss with optional R1 gradient penalty. When enabled, the adversarial component is replaced by the Wasserstein critic objective, while an auxiliary R1 term is added to the discriminator loss to enforce smoothness and stabilise training. This mode is especially effective for multispectral SR tasks where standard GAN losses may struggle with high-dynamic-range reflectance distributions.
 
 
 # Limitations
@@ -153,6 +174,8 @@ Super-resolution techniques, including those implemented in OpenSR-SRGAN, can en
 # Acknowledgement
 This work has been supported by the European Space Agency (ESA) $\Phi$-Lab, within the framework of the ['Explainable AI: Application to Trustworthy Super-Resolution (OpenSR)'](https://eo4society.esa.int/projects/opensr/) Project.
 
+
+<!---
 # Appendix
 ## Appendix A – Architecture and Training Components
 
@@ -289,4 +312,4 @@ Table C4. **Validation performance of the 6-band Sentinel-2 experiment (8×).**
 | **Model** | **PSNR↑** | **SSIM↑** | **LPIPS↑** | **SAM↓** |
 |:-----------|:----------:|:----------:|:-----------:|:----------:|
 | SRResNet (6-band) + PatchGAN Discriminator | 26.65 | 0.74 | 0.80 | 0.091 |
-
+-->
