@@ -12,10 +12,12 @@ References
   a Generative Adversarial Network*, CVPR 2017.
   https://arxiv.org/abs/1609.04802
 """
+
 from __future__ import annotations
 
 import torch
 from torch import nn
+from torch.nn.utils import spectral_norm
 
 from ..model_blocks import ConvolutionalBlock
 
@@ -38,6 +40,9 @@ class Discriminator(nn.Module):
         Number of input channels (e.g., 3 for RGB, 4 for multispectral SR).
     n_blocks : int, default=8
         Number of convolutional blocks to stack. Must be >= 1.
+    use_spectral_norm : bool, default=True
+        Whether to apply spectral normalization to convolutional and linear layers
+        for improved Lipschitz control and training stability.
 
     Attributes
     ----------
@@ -59,6 +64,8 @@ class Discriminator(nn.Module):
         Hidden dimension of the fully connected layer (default 1024).
     n_blocks : int
         Total number of convolutional blocks.
+    use_spectral_norm : bool
+        Indicates whether spectral normalization wraps the convolutional and linear layers.
 
     Raises
     ------
@@ -73,10 +80,12 @@ class Discriminator(nn.Module):
     >>> y.shape
     torch.Size([4, 1])
     """
+
     def __init__(
         self,
         in_channels: int = 3,
         n_blocks: int = 8,
+        use_spectral_norm: bool = True,
     ) -> None:
         super().__init__()
 
@@ -98,16 +107,18 @@ class Discriminator(nn.Module):
             else:
                 out_channels = current_in
 
-            conv_blocks.append(
-                ConvolutionalBlock(
-                    in_channels=current_in,
-                    out_channels=out_channels,
-                    kernel_size=kernel_size,
-                    stride=1 if i % 2 == 0 else 2,
-                    batch_norm=i != 0,
-                    activation="LeakyReLu",
-                )
+            block = ConvolutionalBlock(
+                in_channels=current_in,
+                out_channels=out_channels,
+                kernel_size=kernel_size,
+                stride=1 if i % 2 == 0 else 2,
+                batch_norm=i != 0,
+                activation="LeakyReLu",
             )
+            if use_spectral_norm:
+                self._apply_spectral_norm(block)
+
+            conv_blocks.append(block)
             current_in = out_channels
 
         self.conv_blocks = nn.Sequential(*conv_blocks)
@@ -117,10 +128,15 @@ class Discriminator(nn.Module):
         self.leaky_relu = nn.LeakyReLU(0.2)
         self.fc2 = nn.Linear(fc_size, 1)
 
+        if use_spectral_norm:
+            self.fc1 = spectral_norm(self.fc1)
+            self.fc2 = spectral_norm(self.fc2)
+
         self.base_channels = base_channels
         self.kernel_size = kernel_size
         self.fc_size = fc_size
         self.n_blocks = n_blocks
+        self.use_spectral_norm = use_spectral_norm
 
     def forward(self, imgs: torch.Tensor) -> torch.Tensor:
         """
@@ -143,3 +159,9 @@ class Discriminator(nn.Module):
         flat = pooled.view(batch_size, -1)
         hidden = self.leaky_relu(self.fc1(flat))
         return self.fc2(hidden)
+
+    @staticmethod
+    def _apply_spectral_norm(module: nn.Module) -> None:
+        for submodule in module.modules():
+            if isinstance(submodule, (nn.Conv2d, nn.Linear)):
+                spectral_norm(submodule)

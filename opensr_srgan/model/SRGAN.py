@@ -253,6 +253,12 @@ class SRGAN_model(pl.LightningModule):
                 if n_blocks is not None:
                     discriminator_kwargs["n_blocks"] = n_blocks
 
+                # pass spectral norm option
+                use_spectral_norm = getattr(
+                    self.config.Discriminator, "use_spectral_norm", True
+                )
+                discriminator_kwargs["use_spectral_norm"] = bool(use_spectral_norm)
+
                 self.discriminator = Discriminator(**discriminator_kwargs)
             elif discriminator_type == "patchgan":
                 from opensr_srgan.model.discriminators.patchgan import (
