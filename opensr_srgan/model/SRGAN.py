@@ -166,6 +166,13 @@ class SRGAN_model(pl.LightningModule):
         self.adv_target = (
             0.9 if getattr(self.config.Training, "label_smoothing", False) else 1.0
         )  # use 0.9 if label smoothing enabled, else 1.0
+        self.adv_loss_type = str(
+            getattr(self.config.Training.Losses, "adv_loss_type", "bce")
+        ).lower()
+        if self.adv_loss_type not in {"bce", "wasserstein"}:
+            raise ValueError(
+                "Training.Losses.adv_loss_type must be either 'bce' or 'wasserstein'"
+            )
         self.r1_gamma = float(
             getattr(self.config.Training.Losses, "r1_gamma", 0.0)
         )  # R1 gradient penalty strength (0 disables)
@@ -200,9 +207,10 @@ class SRGAN_model(pl.LightningModule):
             self.content_loss_criterion = GeneratorContentLoss(
                 self.config
             )  # perceptual loss (VGG + pixel)
-            self.adversarial_loss_criterion = (
-                torch.nn.BCEWithLogitsLoss()
-            )  # binary cross-entropy for D/G
+            if self.adv_loss_type == "bce":  # check for WS GAN or BCE
+                self.adversarial_loss_criterion = torch.nn.BCEWithLogitsLoss()
+            else:
+                self.adversarial_loss_criterion = None
 
     def get_models(self, mode):
         """Initialize and attach the Generator and (optionally) Discriminator models.
@@ -665,16 +673,18 @@ class SRGAN_model(pl.LightningModule):
                 # run discriminator and get loss between pred labels and true labels
                 hr_discriminated = self.discriminator(hr_imgs)
                 sr_discriminated = self.discriminator(sr_imgs)
-                adversarial_loss = self.adversarial_loss_criterion(
-                    sr_discriminated, torch.ones_like(sr_discriminated)
-                )
 
-                # Binary Cross-Entropy loss
-                adversarial_loss = self.adversarial_loss_criterion(
-                    sr_discriminated, torch.zeros_like(sr_discriminated)
-                ) + self.adversarial_loss_criterion(
-                    hr_discriminated, torch.ones_like(hr_discriminated)
-                )
+                # Run loss depending on type
+                if self.adv_loss_type == "wasserstein":
+                    adversarial_loss = sr_discriminated.mean() - hr_discriminated.mean()
+                else:
+                    adversarial_loss = self.adversarial_loss_criterion(
+                        sr_discriminated, torch.zeros_like(sr_discriminated)
+                    ) + self.adversarial_loss_criterion(
+                        hr_discriminated, torch.ones_like(hr_discriminated)
+                    )
+
+                # Log image
                 self.log(
                     "validation/DISC_adversarial_loss", adversarial_loss, sync_dist=True
                 )

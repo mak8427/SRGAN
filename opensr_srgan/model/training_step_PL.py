@@ -46,6 +46,7 @@ def training_step_PL1(self, batch, batch_idx, optimizer_idx):
     sr_imgs = self.forward(
         lr_imgs
     )  # forward pass of the generator to produce SR from LR
+    use_wasserstein = self.adv_loss_type == "wasserstein"
 
     # ======================================================================
     # SECTION: Pretraining phase gate
@@ -137,21 +138,25 @@ def training_step_PL1(self, batch, batch_idx, optimizer_idx):
             sr_imgs.detach()
         )  # detach so G doesn’t get gradients from D’s step
 
-        # targets
-        real_target = torch.full_like(
-            hr_discriminated, self.adv_target
-        )  # get labels/fuzzy labels
-        fake_target = torch.zeros_like(
-            sr_discriminated
-        )  # zeros, since generative prediction
+        # Check for WS GAN loss
+        if use_wasserstein:  # Wasserstein GAN loss
+            loss_real = -hr_discriminated.mean()
+            loss_fake = sr_discriminated.mean()
+        else:  # Standard GAN loss (BCE)
+            real_target = torch.full_like(
+                hr_discriminated, self.adv_target
+            )  # get labels/fuzzy labels
+            fake_target = torch.zeros_like(
+                sr_discriminated
+            )  # zeros, since generative prediction
 
-        # Binary Cross-Entropy loss
-        loss_real = self.adversarial_loss_criterion(
-            hr_discriminated, real_target
-        )  # BCEWithLogitsLoss for D(G(x))
-        loss_fake = self.adversarial_loss_criterion(
-            sr_discriminated, fake_target
-        )  # BCEWithLogitsLoss for D(y)
+            # Binary Cross-Entropy loss
+            loss_real = self.adversarial_loss_criterion(
+                hr_discriminated, real_target
+            )  # BCEWithLogitsLoss for D(G(x))
+            loss_fake = self.adversarial_loss_criterion(
+                sr_discriminated, fake_target
+            )  # BCEWithLogitsLoss for D(y)
 
         # R1 Gradient Penalty (if enabled)
         r1_penalty = torch.zeros((), device=hr_imgs.device, dtype=hr_imgs.dtype)
@@ -220,9 +225,12 @@ def training_step_PL1(self, batch, batch_idx, optimizer_idx):
         sr_discriminated = self.discriminator(
             sr_imgs
         )  # D(SR): logits for generator outputs
-        adversarial_loss = self.adversarial_loss_criterion(
-            sr_discriminated, torch.ones_like(sr_discriminated)
-        )  # keep taargets 1.0 for G loss
+        if use_wasserstein:  # Wasserstein GAN loss
+            adversarial_loss = -sr_discriminated.mean()
+        else:  # Standard GAN loss (BCE)
+            adversarial_loss = self.adversarial_loss_criterion(
+                sr_discriminated, torch.ones_like(sr_discriminated)
+            )  # keep taargets 1.0 for G loss
         self.log(
             "generator/adversarial_loss", adversarial_loss, sync_dist=True
         )  # log unweighted adversarial loss
@@ -289,6 +297,7 @@ def training_step_PL2(self, batch, batch_idx):
     # -------- CREATE SR DATA --------
     lr_imgs, hr_imgs = batch
     sr_imgs = self.forward(lr_imgs)
+    use_wasserstein = self.adv_loss_type == "wasserstein"
 
     # --- helper to resolve adv-weight function name mismatches ---
     def _adv_weight():
@@ -376,11 +385,15 @@ def training_step_PL2(self, batch, batch_idx):
     hr_discriminated = self.discriminator(hr_imgs)  # D(y)
     sr_discriminated = self.discriminator(sr_imgs.detach())  # D(G(x)) w/o grad to G
 
-    real_target = torch.full_like(hr_discriminated, self.adv_target)
-    fake_target = torch.zeros_like(sr_discriminated)
+    if use_wasserstein:  # Wasserstein GAN loss
+        loss_real = -hr_discriminated.mean()
+        loss_fake = sr_discriminated.mean()
+    else:  # Standard GAN loss (BCE)
+        real_target = torch.full_like(hr_discriminated, self.adv_target)
+        fake_target = torch.zeros_like(sr_discriminated)
 
-    loss_real = self.adversarial_loss_criterion(hr_discriminated, real_target)
-    loss_fake = self.adversarial_loss_criterion(sr_discriminated, fake_target)
+        loss_real = self.adversarial_loss_criterion(hr_discriminated, real_target)
+        loss_fake = self.adversarial_loss_criterion(sr_discriminated, fake_target)
 
     # R1 Gradient Penalty
     r1_penalty = torch.zeros((), device=hr_imgs.device, dtype=hr_imgs.dtype)
@@ -429,9 +442,12 @@ def training_step_PL2(self, batch, batch_idx):
 
     # 2) adversarial loss against ones
     sr_discriminated_for_g = self.discriminator(sr_imgs)
-    g_adv = self.adversarial_loss_criterion(
-        sr_discriminated_for_g, torch.ones_like(sr_discriminated_for_g)
-    )
+    if use_wasserstein:  # Wasserstein GAN loss
+        g_adv = -sr_discriminated_for_g.mean()
+    else:  # Standard GAN loss (BCE)
+        g_adv = self.adversarial_loss_criterion(
+            sr_discriminated_for_g, torch.ones_like(sr_discriminated_for_g)
+        )
     self.log("generator/adversarial_loss", g_adv, sync_dist=True)
 
     # 3) weighted total

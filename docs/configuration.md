@@ -108,6 +108,7 @@ stable validation imagery. The EMA is fully optional and controlled through the 
 | --- | --- | --- |
 | `adv_loss_beta` | `1e-3` | Target weight applied to the adversarial term after ramp-up. |
 | `adv_loss_schedule` | `cosine` | Ramp shape (`linear` or `cosine`). |
+| `adv_loss_type` | `bce` | Adversarial objective (`bce` for classic SRGAN logits, `wasserstein` for a non-saturating critic-style loss). |
 | `l1_weight` | `1.0` | Weight of the pixelwise L1 loss. |
 | `sam_weight` | `0.05` | Weight of the spectral angle mapper loss. |
 | `perceptual_weight` | `0.1` | Weight of the perceptual feature loss. |

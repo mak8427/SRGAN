@@ -40,8 +40,10 @@ if pretrain_phase:
 
 Once `_pretrain_check()` flips to `False`, the function splits into discriminator and generator updates:
 
-* **Discriminator (`optimizer_idx == 0`).** Real and fake logits are compared against smoothed targets, and the resulting BCE components are summed into `discriminator/adversarial_loss`. The helper logs running opinions (`discriminator/D(y)_prob`, `discriminator/D(G(x))_prob`) so you can diagnose mode collapse early. 【F:opensr_srgan/model/training_step_PL.py†L52-L98】
-* **Generator (`optimizer_idx == 1`).** The generator measures content metrics once, reuses them for logging, queries the adversarial signal (`adversarial_loss_criterion(sr_discriminated, ones)`), and multiplies it with `_adv_loss_weight()` before combining both parts into `generator/total_loss`. 【F:opensr_srgan/model/training_step_PL.py†L100-L133】
+* **Discriminator (`optimizer_idx == 0`).** Real and fake logits are compared against smoothed targets, and the resulting BCE components are summed into `discriminator/adversarial_loss`. The helper logs running opinions (`discriminator/D(y)_prob`, `discriminator/D(G(x))_prob`) so you can diagnose mode collapse early. 【F:opensr_srgan/model/training_step_PL.py†L135-L195】
+* **Generator (`optimizer_idx == 1`).** The generator measures content metrics once, reuses them for logging, queries the adversarial signal (`adversarial_loss_criterion(sr_discriminated, ones)`), and multiplies it with `_adv_loss_weight()` before combining both parts into `generator/total_loss`. 【F:opensr_srgan/model/training_step_PL.py†L203-L247】
+
+With `Training.Losses.adv_loss_type: wasserstein`, the same branches apply but swap the BCE terms for a critic objective: the discriminator minimises `mean(fake) - mean(real)` (plus any configured R1 penalty), and the generator minimises `-mean(D(G(x)))`. Logged probabilities remain sigmoid-squashed critic scores to keep dashboards comparable. 【F:opensr_srgan/model/training_step_PL.py†L129-L247】
 
 ## Training step anatomy (Lightning 2.x)
 
@@ -65,7 +67,7 @@ if pretrain_phase:
     return content_loss
 ```
 
-The adversarial branch toggles each optimiser in turn, accumulates identical logs to the PL1.x path, and performs the EMA update after every generator step. 【F:opensr_srgan/model/training_step_PL.py†L136-L234】
+The adversarial branch toggles each optimiser in turn, accumulates identical logs to the PL1.x path, and performs the EMA update after every generator step. 【F:opensr_srgan/model/training_step_PL.py†L336-L458】
 
 ## Adversarial weight schedule
 

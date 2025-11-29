@@ -56,6 +56,7 @@ Training:
 
   Losses:
     # --- GAN term ---
+    adv_loss_type: 'bce'       # Adversarial objective: ['bce', 'wasserstein']
     adv_loss_beta: 0.001       # Final adversarial loss weight after ramp-up - original 0.001
     adv_loss_schedule: 'cosine'   # Adversarial weight ramp type: ['linear', 'cosine']
     r1_gamma: 0.0              # R1 gradient penalty strength on real images (0 disables)
