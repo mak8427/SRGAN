@@ -166,6 +166,9 @@ class SRGAN_model(pl.LightningModule):
         self.adv_target = (
             0.9 if getattr(self.config.Training, "label_smoothing", False) else 1.0
         )  # use 0.9 if label smoothing enabled, else 1.0
+        self.r1_gamma = float(
+            getattr(self.config.Training.Losses, "r1_gamma", 0.0)
+        )  # R1 gradient penalty strength (0 disables)
 
         # ======================================================================
         # SECTION: Set up Training Strategy
@@ -284,9 +287,7 @@ class SRGAN_model(pl.LightningModule):
                         f"[Discriminator:esrgan] Ignoring unsupported configuration options: {ignored_joined}."
                     )
 
-                base_channels = getattr(
-                    self.config.Discriminator, "base_channels", 64
-                )
+                base_channels = getattr(self.config.Discriminator, "base_channels", 64)
                 linear_size = getattr(self.config.Discriminator, "linear_size", 1024)
                 self.discriminator = ESRGANDiscriminator(
                     in_channels=self.config.Model.in_bands,
@@ -440,7 +441,7 @@ class SRGAN_model(pl.LightningModule):
 
         # --- Histogram match SR to LR ---
         sr_imgs = histogram_match(normalized_lr, sr_imgs)  # match distributions
-        
+
         # --- Denormalize output back to original range ---
         sr_imgs = self.normalizer.denormalize(sr_imgs)
 
@@ -1270,14 +1271,16 @@ class SRGAN_model(pl.LightningModule):
         self.load_state_dict(ckpt["state_dict"])
         print(f"Loaded checkpoint from {ckpt_path}")
 
+
 # Quick Testing
 if __name__ == "__main__":
     from omegaconf import OmegaConf
+
     config = OmegaConf.load("opensr_srgan/configs/config_xray.yaml")
     model = SRGAN_model(config=config)
-    
+
     # test data
     import torch
+
     lr = torch.randn(2, 1, 128, 128)
     sr = model(lr)
-    
