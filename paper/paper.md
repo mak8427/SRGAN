@@ -42,7 +42,7 @@ OpenSR-SRGAN is a modular, configuration-driven framework for training and bench
 
 OpenSR-SRGAN supports complete end-to-end workflows with minimal setup: selecting architectures, scaling factors, band combinations, and training strategies entirely from configuration files. Although initially designed for remote-sensing super-resolution, the framework is domain-agnostic at its core and can be directly applied to other imaging modalities, such as medical imaging and standard computer-vision datasets, without architectural changes.
 
-![SWIR-band composite for 8x SR task showing the SR performance of OpenSR-SRGAN.](figures/6band_banner.png)
+![Sentinel-2 SWIR-band composite for 8x SR task showing the SR performance of OpenSR-SRGAN.](figures/6band_banner.png){#fig:banner}
 
 
 # Introduction
@@ -53,7 +53,7 @@ Deep learning has substantially advanced SISR, with convolutional models demonst
 
 Generative Adversarial Networks (GANs) [@goodfellow2014generativeadversarialnetworks] introduced an adversarial learning method in which a generator and discriminator co-evolve to produce realistic, high-frequency detail. GANs have since been widely used in remote sensing for cloud removal, image translation, domain adaptation, and data synthesis [@11159252; @su2024intriguingpropertycounterfactualexplanation], demonstrating their ability to generate spatially coherent and perceptually plausible imagery.
 
-The Super-Resolution GAN (SRGAN) [@ledig2017photo] extended this idea to image enhancement by combining perceptual and adversarial losses for photorealistic detail reconstruction. SRGAN-style methods have since been adopted for remote-sensing super-resolution [@rs15205062; @9787539; @10375518; @satlassuperres], where recovering fine spatial structure from coarse inputs can improve analysis of land cover, infrastructure, and environmental change.
+The Super-Resolution GAN (SRGAN) [@ledig2017photo] extended this idea to image enhancement by combining perceptual and adversarial losses for photorealistic detail reconstruction. SRGAN-style methods have since been adopted for remote-sensing super-resolution [@rs15205062; @9787539; @10375518; @satlassuperres], where recovering fine spatial structure from coarse inputs can improve analysis of land cover, infrastructure, and environmental change. A representative LR–SR–HR comparison illustrating the gain in spatial detail is shown in Figure @fig:banner.
 
 Recent advances in diffusion and transformer-based architectures have shifted the state of the art in image super-resolution toward generative models with stronger probabilistic and contextual reasoning [@s1; @s2; @s3].  
 Nevertheless, GAN-based approaches continue to be actively explored [@g1] and remain a practical choice for operational production settings [@allen].
