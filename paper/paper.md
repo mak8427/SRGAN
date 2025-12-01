@@ -42,6 +42,8 @@ OpenSR-SRGAN is a modular, configuration-driven framework for training and bench
 
 OpenSR-SRGAN supports complete end-to-end workflows with minimal setup: selecting architectures, scaling factors, band combinations, and training strategies entirely from configuration files. Although initially designed for remote-sensing super-resolution, the framework is domain-agnostic at its core and can be directly applied to other imaging modalities, such as medical imaging and standard computer-vision datasets, without architectural changes.
 
+![SWIR-band composite for 8x SR task showing the SR performance of OpenSR-SRGAN.](figures/6band_banner.png)
+
 
 # Introduction
 
@@ -122,3 +124,5 @@ In the spirit of open science and collaboration, we encourage feature requests a
 
 # Acknowledgement
 This work has been supported by the European Space Agency (ESA) $\Phi$-Lab, within the framework of the ['Explainable AI: Application to Trustworthy Super-Resolution (OpenSR)'](https://eo4society.esa.int/projects/opensr/) Project.
+
+# References
