@@ -46,7 +46,10 @@ def training_step_PL1(self, batch, batch_idx, optimizer_idx):
     sr_imgs = self.forward(
         lr_imgs
     )  # forward pass of the generator to produce SR from LR
-    use_wasserstein = self.adv_loss_type == "wasserstein"
+
+    # Default to standard GAN loss if adv_loss_type is not defined (e.g., lightweight
+    # harnesses in tests). The real model sets this attribute during init.
+    use_wasserstein = getattr(self, "adv_loss_type", "gan") == "wasserstein"
 
     # ======================================================================
     # SECTION: Pretraining phase gate
@@ -128,9 +131,8 @@ def training_step_PL1(self, batch, batch_idx, optimizer_idx):
 
     # -------- Normal Train: Discriminator Step  --------
     if optimizer_idx == 0:
-        hr_imgs.requires_grad_(
-            self.r1_gamma > 0
-        )  # enable grad for R1 penalty if needed
+        r1_gamma = getattr(self, "r1_gamma", 0.0)  # default to 0 for
+        hr_imgs.requires_grad_(r1_gamma > 0)  # enable grad for R1 penalty if needed
 
         # run discriminator and get loss between pred labels and true labels
         hr_discriminated = self.discriminator(hr_imgs)  # D(real): logits for HR images
@@ -160,7 +162,7 @@ def training_step_PL1(self, batch, batch_idx, optimizer_idx):
 
         # R1 Gradient Penalty (if enabled)
         r1_penalty = torch.zeros((), device=hr_imgs.device, dtype=hr_imgs.dtype)
-        if self.r1_gamma > 0:
+        if r1_gamma > 0:
             grad_real = torch.autograd.grad(
                 outputs=hr_discriminated.sum(),
                 inputs=hr_imgs,
@@ -168,7 +170,7 @@ def training_step_PL1(self, batch, batch_idx, optimizer_idx):
                 retain_graph=True,
             )[0]
             grad_penalty = grad_real.pow(2).reshape(grad_real.size(0), -1).sum(dim=1)
-            r1_penalty = 0.5 * self.r1_gamma * grad_penalty.mean()
+            r1_penalty = 0.5 * r1_gamma * grad_penalty.mean()
 
         # Sum up losses
         adversarial_loss = (
@@ -297,7 +299,7 @@ def training_step_PL2(self, batch, batch_idx):
     # -------- CREATE SR DATA --------
     lr_imgs, hr_imgs = batch
     sr_imgs = self.forward(lr_imgs)
-    use_wasserstein = self.adv_loss_type == "wasserstein"
+    use_wasserstein = getattr(self, "adv_loss_type", "gan") == "wasserstein"
 
     # --- helper to resolve adv-weight function name mismatches ---
     def _adv_weight():
@@ -380,7 +382,10 @@ def training_step_PL2(self, batch, batch_idx):
         self.toggle_optimizer(opt_d)
     opt_d.zero_grad()
 
-    hr_imgs.requires_grad_(self.r1_gamma > 0)  # enable grad for R1 penalty if needed
+    # Get R1 Gamma
+    r1_gamma = getattr(self, "r1_gamma", 0.0)
+    hr_imgs.requires_grad_(r1_gamma > 0)  # enable grad for R1 penalty if needed
+
 
     hr_discriminated = self.discriminator(hr_imgs)  # D(y)
     sr_discriminated = self.discriminator(sr_imgs.detach())  # D(G(x)) w/o grad to G
@@ -397,7 +402,7 @@ def training_step_PL2(self, batch, batch_idx):
 
     # R1 Gradient Penalty
     r1_penalty = torch.zeros((), device=hr_imgs.device, dtype=hr_imgs.dtype)
-    if self.r1_gamma > 0:
+    if r1_gamma > 0:
         grad_real = torch.autograd.grad(
             outputs=hr_discriminated.sum(),
             inputs=hr_imgs,
@@ -405,7 +410,7 @@ def training_step_PL2(self, batch, batch_idx):
             retain_graph=True,
         )[0]
         grad_penalty = grad_real.pow(2).reshape(grad_real.size(0), -1).sum(dim=1)
-        r1_penalty = 0.5 * self.r1_gamma * grad_penalty.mean()
+        r1_penalty = 0.5 * r1_gamma * grad_penalty.mean()
 
     adversarial_loss = (
         loss_real + loss_fake + r1_penalty
