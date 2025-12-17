@@ -27,6 +27,9 @@ def select_dataset(config):
     # Only the "ExampleDataset" is actively used in the current version.
 
     if dataset_selection == "S2_6b":
+        print(f"WARNING -- {dataset_selection} currently not a public dataset!")
+        print("Adopt the config.yaml to use your own dataset.")
+        
         # Import here to avoid import costs when other datasets are used elsewhere.
         from .SEN2_SAFE.S2_6b_ds import S2SAFEDataset
 
@@ -68,6 +71,9 @@ def select_dataset(config):
         )
 
     elif dataset_selection == "S2_4b":
+        print(f"WARNING -- {dataset_selection} currently not a public dataset!")
+        print("Adopt the config.yaml to use your own dataset.")
+
         # If there is a dedicated 4-band dataset file, swap the import accordingly.
         from .SEN2_SAFE.S2_6b_ds import S2SAFEDataset
 
@@ -101,7 +107,10 @@ def select_dataset(config):
             antialias=True,
         )
 
+    # For internal testing only
     elif dataset_selection == "SISR_WW":
+        print(f"WARNING -- {dataset_selection} currently not a public dataset!")
+        print("Adopt the config.yaml to use your own dataset.")
         from .SISR_WW.SISR_WW_dataset import SISRWorldWide
 
         path = "/data3/SEN2NAIP_global"
@@ -110,21 +119,22 @@ def select_dataset(config):
 
     elif dataset_selection == "ExampleDataset":
         from opensr_srgan.data.example_data.example_dataset import ExampleDataset
-
+        print("WARNING -- Using Example Dataset!")
+        print("This dataset is exclusively meant for demonstration annd debugging, not training or evaluation.")
+        print("Please use a proper dataset for any serious work.")
         path = "example_dataset/"
         ds_train = ExampleDataset(folder=path, phase="train")
         ds_val = ExampleDataset(folder=path, phase="val")
         
-    elif dataset_selection == "ChestXRay":
-        from opensr_srgan.data.chestxrays.dataset import XRayDataset
 
-        ds_train = XRayDataset(phase="train", sr_factor=config.Generator.scaling_factor)
-        ds_val = XRayDataset(phase="val", sr_factor=config.Generator.scaling_factor)
     else:
         # Centralized error so unsupported keys fail loudly & clearly.
         raise NotImplementedError(
             f"Dataset {dataset_selection} not implemented!"
-            f"Add your dataset in data/dataset_selector.py to train on that."
+            f"This can happen happens when:"
+            f" - (a) you misspelled the dataset name in the config"
+            f" - (b) the dataset is not implemented in the data folder."
+            f" - (c) you are trying to use a custom dataset but forgot to add it in data/dataset_selector.py."
         )
 
     # Wrap the two datasets into a LightningDataModule with config-driven loader knobs.
