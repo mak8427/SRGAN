@@ -25,6 +25,7 @@ htmlcov/
 .pytest_cache/*
 *.egg-info
 paper/paper_original.md
+PR_backlog.txt
 
 # Data
 example_dataset/
