@@ -41,3 +41,13 @@ def test_plot_tensors_returns_pil_image():
     assert result.mode == "RGB"
     width, height = result.size
     assert width > 0 and height > 0
+
+
+def test_plot_tensors_grayscale_batch():
+    lr = torch.rand(2, 1, 4, 4)
+    sr = torch.rand(2, 1, 4, 4)
+    hr = torch.rand(2, 1, 4, 4)
+
+    result = logging_helpers.plot_tensors(lr, sr, hr, title="Gray")
+
+    assert isinstance(result, Image.Image)

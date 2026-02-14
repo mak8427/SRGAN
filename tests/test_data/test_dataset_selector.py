@@ -1,5 +1,6 @@
 import sys
 import types
+import runpy
 
 import pytest
 import torch
@@ -123,3 +124,151 @@ def test_select_dataset_unknown_raises():
         dataset_selector.select_dataset(config)
 
     assert "does-not-exist" in str(exc.value)
+
+
+class _StubLegacyDataset(Dataset):
+    created_kwargs = []
+
+    def __init__(self, **kwargs):
+        self.__class__.created_kwargs.append(kwargs)
+        self._data = torch.arange(4, dtype=torch.float32)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __getitem__(self, idx):
+        return self._data[idx]
+
+
+class _StubWorldWideDataset(Dataset):
+    created_kwargs = []
+
+    def __init__(self, **kwargs):
+        self.__class__.created_kwargs.append(kwargs)
+        self._data = torch.arange(5, dtype=torch.float32)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __getitem__(self, idx):
+        return self._data[idx]
+
+
+def _install_module(monkeypatch, name, is_package=False, **attrs):
+    module = types.ModuleType(name)
+    if is_package:
+        module.__path__ = []  # type: ignore[attr-defined]
+    for key, value in attrs.items():
+        setattr(module, key, value)
+    monkeypatch.setitem(sys.modules, name, module)
+    return module
+
+
+def test_select_dataset_s2_6b_branch(monkeypatch):
+    _StubLegacyDataset.created_kwargs.clear()
+    _install_module(monkeypatch, "opensr_srgan.data.SEN2_SAFE", is_package=True)
+    _install_module(
+        monkeypatch,
+        "opensr_srgan.data.SEN2_SAFE.S2_6b_ds",
+        S2SAFEDataset=_StubLegacyDataset,
+    )
+
+    config = _make_config(
+        dataset_type="S2_6b",
+        train_batch_size=2,
+        val_batch_size=2,
+        num_workers=0,
+    )
+    config.Generator.scaling_factor = 8
+
+    datamodule = dataset_selector.select_dataset(config)
+    train_loader = datamodule.train_dataloader()
+    val_loader = datamodule.val_dataloader()
+
+    assert len(_StubLegacyDataset.created_kwargs) == 2
+    assert _StubLegacyDataset.created_kwargs[0]["phase"] == "train"
+    assert _StubLegacyDataset.created_kwargs[1]["phase"] == "val"
+    assert _StubLegacyDataset.created_kwargs[0]["sr_factor"] == 8
+    assert _StubLegacyDataset.created_kwargs[0]["bands_keep"] == [
+        "B05_20m",
+        "B06_20m",
+        "B07_20m",
+        "B8A_20m",
+        "B11_20m",
+        "B12_20m",
+    ]
+    assert train_loader.batch_size == 2
+    assert val_loader.batch_size == 2
+
+
+def test_select_dataset_s2_4b_branch(monkeypatch):
+    _StubLegacyDataset.created_kwargs.clear()
+    _install_module(monkeypatch, "opensr_srgan.data.SEN2_SAFE", is_package=True)
+    _install_module(
+        monkeypatch,
+        "opensr_srgan.data.SEN2_SAFE.S2_6b_ds",
+        S2SAFEDataset=_StubLegacyDataset,
+    )
+
+    config = _make_config(
+        dataset_type="S2_4b",
+        train_batch_size=1,
+        val_batch_size=3,
+        num_workers=0,
+    )
+
+    datamodule = dataset_selector.select_dataset(config)
+    _ = datamodule.train_dataloader()
+    _ = datamodule.val_dataloader()
+
+    assert len(_StubLegacyDataset.created_kwargs) == 2
+    assert _StubLegacyDataset.created_kwargs[0]["bands_keep"] == [
+        "B05_10m",
+        "B04_10m",
+        "B03_10m",
+        "B02_10m",
+    ]
+
+
+def test_select_dataset_sisr_ww_branch(monkeypatch):
+    _StubWorldWideDataset.created_kwargs.clear()
+    _install_module(monkeypatch, "opensr_srgan.data.SISR_WW", is_package=True)
+    _install_module(
+        monkeypatch,
+        "opensr_srgan.data.SISR_WW.SISR_WW_dataset",
+        SISRWorldWide=_StubWorldWideDataset,
+    )
+
+    config = _make_config(
+        dataset_type="SISR_WW",
+        train_batch_size=2,
+        val_batch_size=2,
+        num_workers=0,
+    )
+
+    datamodule = dataset_selector.select_dataset(config)
+    _ = datamodule.train_dataloader()
+    _ = datamodule.val_dataloader()
+
+    assert len(_StubWorldWideDataset.created_kwargs) == 2
+    assert _StubWorldWideDataset.created_kwargs[0]["split"] == "train"
+    assert _StubWorldWideDataset.created_kwargs[1]["split"] == "val"
+
+
+def test_dataset_selector_module_main_guard(monkeypatch):
+    import opensr_srgan.data.example_data.example_dataset as example_module
+    from omegaconf import OmegaConf
+
+    monkeypatch.setattr(example_module, "ExampleDataset", _StubExampleDataset)
+    monkeypatch.setattr(
+        OmegaConf,
+        "load",
+        lambda _path: _make_config(
+            dataset_type="ExampleDataset",
+            train_batch_size=1,
+            val_batch_size=1,
+            num_workers=0,
+        ),
+    )
+
+    runpy.run_module("opensr_srgan.data.dataset_selector", run_name="__main__")

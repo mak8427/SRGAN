@@ -129,3 +129,61 @@ def test_invalid_device_raises():
 
     with pytest.raises(ValueError):
         _call_builder(config)
+
+
+def test_integer_gpu_count_and_resume_for_pre_v2(monkeypatch):
+    """PL<2 uses ``resume_from_checkpoint`` in Trainer kwargs."""
+
+    monkeypatch.setattr("opensr_srgan.utils.build_trainer_kwargs.pl.__version__", "1.9.5")
+    class _TrainerV1:
+        def __init__(
+            self,
+            *,
+            accelerator=None,
+            strategy=None,
+            devices=None,
+            val_check_interval=None,
+            limit_val_batches=None,
+            max_epochs=None,
+            log_every_n_steps=None,
+            logger=None,
+            callbacks=None,
+            gradient_clip_val=None,
+            resume_from_checkpoint=None,
+        ) -> None:
+            pass
+
+        def fit(self, *args, **kwargs):
+            return None
+
+    monkeypatch.setattr(
+        "opensr_srgan.utils.build_trainer_kwargs.pl.Trainer", _TrainerV1
+    )
+    config = _make_config(device="cuda", gpus=2)
+    trainer_kwargs, fit_kwargs = _call_builder(config, resume_ckpt="resume.ckpt")
+
+    assert trainer_kwargs["devices"] == 2
+    assert trainer_kwargs["strategy"] == "ddp"
+    assert trainer_kwargs["resume_from_checkpoint"] == "resume.ckpt"
+    assert fit_kwargs == {}
+
+
+def test_v2_resume_uses_fit_ckpt_path(monkeypatch):
+    """PL>=2 forwards resume checkpoints via ``Trainer.fit(ckpt_path=...)``."""
+
+    monkeypatch.setattr("opensr_srgan.utils.build_trainer_kwargs.pl.__version__", "2.2.0")
+    config = _make_config(device="cuda", gpus=[0])
+    _, fit_kwargs = _call_builder(config, resume_ckpt="resume.ckpt")
+
+    assert fit_kwargs == {"ckpt_path": "resume.ckpt"}
+
+
+def test_non_sequence_gpu_config_falls_back_to_single_device(monkeypatch):
+    """Unexpected ``gpus`` values trigger the safe single-device fallback."""
+
+    monkeypatch.setattr("opensr_srgan.utils.build_trainer_kwargs.pl.__version__", "2.2.0")
+    config = _make_config(device="cuda", gpus="not-a-device-list")
+    trainer_kwargs, _ = _call_builder(config)
+
+    assert trainer_kwargs["devices"] == 1
+    assert "strategy" not in trainer_kwargs

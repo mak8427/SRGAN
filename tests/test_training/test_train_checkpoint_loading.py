@@ -1,4 +1,5 @@
 import importlib
+import runpy
 import sys
 import types
 
@@ -148,6 +149,9 @@ def train_module(monkeypatch):
         config, logger, checkpoint_callback, early_stop_callback, resume_ckpt=None
     ):
         state["resume_ckpt"] = resume_ckpt
+        state["builder_logger"] = logger
+        state["builder_checkpoint_callback"] = checkpoint_callback
+        state["builder_early_stop_callback"] = early_stop_callback
         return {"max_epochs": 1}, (
             {"ckpt_path": resume_ckpt} if resume_ckpt is not None else {}
         )
@@ -201,3 +205,166 @@ def test_train_rejects_load_and_continue_combination(train_module):
         train_mod.train(config)
 
     assert state["model_class"].instances == []
+
+
+def test_train_accepts_plain_dict_config(train_module):
+    train_mod, state = train_module
+    config = {
+        "Model": {
+            "in_bands": 4,
+            "load_checkpoint": False,
+            "continue_training": False,
+        },
+        "Training": {"gpus": [0]},
+        "Schedulers": {"metric_g": "val_metrics/l1"},
+        "Optimizers": {"gradient_clip_val": 0.0},
+        "Logging": {
+            "wandb": {"enabled": False, "project": "unit-tests", "entity": "unit"}
+        },
+    }
+
+    train_mod.train(config)
+
+    model = state["model_class"].instances[0]
+    assert model.loaded_weights_calls == []
+    assert state["resume_ckpt"] is None
+
+
+def test_train_accepts_yaml_path_config(train_module, tmp_path):
+    train_mod, state = train_module
+
+    cfg_path = tmp_path / "cfg.yaml"
+    cfg_path.write_text(
+        """
+Model:
+  in_bands: 4
+  load_checkpoint: false
+  continue_training: false
+Training:
+  gpus: [0]
+Schedulers:
+  metric_g: val_metrics/l1
+Optimizers:
+  gradient_clip_val: 0.0
+Logging:
+  wandb:
+    enabled: false
+    project: unit-tests
+    entity: unit
+"""
+    )
+
+    train_mod.train(str(cfg_path))
+
+    assert state["fit_call"]["datamodule"] == "DUMMY_DATAMODULE"
+    assert state["resume_ckpt"] is None
+
+
+def test_train_rejects_invalid_config_type(train_module):
+    train_mod, _ = train_module
+
+    with pytest.raises(TypeError, match="Config must be"):
+        train_mod.train(12345)
+
+
+def test_train_uses_wandb_logger_and_saves_config_when_global_zero(
+    train_module, monkeypatch, tmp_path
+):
+    train_mod, state = train_module
+    monkeypatch.chdir(tmp_path)
+
+    # Exercise the global-zero save branch.
+    gpu_rank_module = sys.modules["opensr_srgan.utils.gpu_rank"]
+    monkeypatch.setattr(gpu_rank_module, "_is_global_zero", lambda: True)
+
+    config = _make_config(load_checkpoint=False, continue_training=False)
+    config.Logging.wandb.enabled = True
+
+    train_mod.train(config)
+
+    assert state["builder_logger"].__class__.__name__ == "WandbLogger"
+    config_files = list((tmp_path / "logs" / "unit-tests").glob("*/config.yaml"))
+    assert config_files, "expected config.yaml to be written in logs/unit-tests/<timestamp>/"
+
+
+def test_train_module_main_guard(monkeypatch):
+    state = {}
+
+    wandb_mod = types.ModuleType("wandb")
+    wandb_mod.finish = lambda: state.setdefault("wandb_finished", True)
+    monkeypatch.setitem(sys.modules, "wandb", wandb_mod)
+
+    pl_mod = types.ModuleType("pytorch_lightning")
+
+    class DummyTrainer:
+        def __init__(self, **kwargs):
+            state["trainer_kwargs"] = kwargs
+
+        def fit(self, model, datamodule=None, **kwargs):
+            state["fit_call"] = {"model": model, "datamodule": datamodule, "kwargs": kwargs}
+
+    pl_mod.Trainer = DummyTrainer
+    pl_mod.__version__ = "2.2.0"
+    monkeypatch.setitem(sys.modules, "pytorch_lightning", pl_mod)
+
+    loggers_mod = types.ModuleType("pytorch_lightning.loggers")
+
+    class CSVLogger:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    class WandbLogger:
+        def __init__(self, *args, **kwargs):
+            pass
+
+    loggers_mod.CSVLogger = CSVLogger
+    loggers_mod.WandbLogger = WandbLogger
+    monkeypatch.setitem(sys.modules, "pytorch_lightning.loggers", loggers_mod)
+
+    callbacks_mod = types.ModuleType("pytorch_lightning.callbacks")
+    callbacks_mod.ModelCheckpoint = lambda *args, **kwargs: "checkpoint"
+    monkeypatch.setitem(sys.modules, "pytorch_lightning.callbacks", callbacks_mod)
+
+    early_stopping_mod = types.ModuleType("pytorch_lightning.callbacks.early_stopping")
+    early_stopping_mod.EarlyStopping = lambda *args, **kwargs: "early_stop"
+    monkeypatch.setitem(
+        sys.modules, "pytorch_lightning.callbacks.early_stopping", early_stopping_mod
+    )
+
+    srgan_mod = types.ModuleType("opensr_srgan.model.SRGAN")
+
+    class DummySRGANModel:
+        def __init__(self, config=None, **kwargs):
+            self.config = config
+
+        def load_weights_from_checkpoint(self, *args, **kwargs):
+            return None
+
+    srgan_mod.SRGAN_model = DummySRGANModel
+    monkeypatch.setitem(sys.modules, "opensr_srgan.model.SRGAN", srgan_mod)
+
+    dataset_mod = types.ModuleType("opensr_srgan.data.dataset_selector")
+    dataset_mod.select_dataset = lambda config: "DM"
+    monkeypatch.setitem(sys.modules, "opensr_srgan.data.dataset_selector", dataset_mod)
+
+    trainer_kwargs_mod = types.ModuleType("opensr_srgan.utils.build_trainer_kwargs")
+    trainer_kwargs_mod.build_lightning_kwargs = (
+        lambda **kwargs: ({"max_epochs": 1}, {})
+    )
+    monkeypatch.setitem(
+        sys.modules, "opensr_srgan.utils.build_trainer_kwargs", trainer_kwargs_mod
+    )
+
+    gpu_rank_mod = types.ModuleType("opensr_srgan.utils.gpu_rank")
+    gpu_rank_mod._is_global_zero = lambda: False
+    monkeypatch.setitem(sys.modules, "opensr_srgan.utils.gpu_rank", gpu_rank_mod)
+
+    monkeypatch.setattr(
+        "omegaconf.OmegaConf.load",
+        lambda _path: _make_config(load_checkpoint=False, continue_training=False),
+    )
+    monkeypatch.setattr(sys, "argv", ["train.py"])
+
+    runpy.run_module("opensr_srgan.train", run_name="__main__")
+
+    assert state["fit_call"]["datamodule"] == "DM"

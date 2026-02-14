@@ -1,5 +1,6 @@
 import importlib
 import os
+import runpy
 import sys
 from types import SimpleNamespace
 
@@ -139,3 +140,50 @@ def test_run_sen2_inference_sets_cuda_devices(monkeypatch, inference_module):
     )
 
     assert os.environ["CUDA_VISIBLE_DEVICES"] == "1,2"
+
+
+def test_main_calls_run_sen2_inference(monkeypatch, inference_module):
+    recorded = {}
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+
+    def fake_run_sen2_inference(**kwargs):
+        recorded.update(kwargs)
+        return "ok"
+
+    monkeypatch.setattr(inference_module, "run_sen2_inference", fake_run_sen2_inference)
+
+    inference_module.main()
+
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "0"
+    assert recorded["gpus"] == [0]
+    assert recorded["ckpt_path"].endswith("last.ckpt")
+    assert recorded["config_path"].endswith("config_20m.yaml")
+    assert recorded["sen2_path"].endswith("S2A_MSIL2A_EXAMPLE.SAFE")
+
+
+def test_inference_module_main_guard(monkeypatch):
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    monkeypatch.setitem(
+        sys.modules,
+        "opensr_srgan.model.SRGAN",
+        SimpleNamespace(SRGAN_model=DummySRGAN),
+    )
+
+    class DummyProcessor:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def start_super_resolution(self):
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "opensr_utils",
+        SimpleNamespace(large_file_processing=DummyProcessor),
+    )
+    monkeypatch.setattr("torch.cuda.is_available", lambda: False)
+    monkeypatch.setattr(sys, "argv", ["inference.py"])
+
+    runpy.run_module("opensr_srgan.inference", run_name="__main__")
+
+    assert os.environ["CUDA_VISIBLE_DEVICES"] == "0"

@@ -28,3 +28,15 @@ def test_tensor_to_numpy_fallback_on_missing_bindings(monkeypatch):
     assert isinstance(result, np.ndarray)
     assert result.dtype == np.int32
     np.testing.assert_array_equal(result, np.array([1, 2, 3], dtype=np.int32))
+
+
+def test_tensor_to_numpy_reraises_unrelated_runtime_errors(monkeypatch):
+    tensor = torch.tensor([1.0], dtype=torch.float32)
+
+    def _raise_other(_self):
+        raise RuntimeError("other failure")
+
+    monkeypatch.setattr(torch.Tensor, "numpy", _raise_other)
+
+    with np.testing.assert_raises_regex(RuntimeError, "other failure"):
+        tensor_to_numpy(tensor)
