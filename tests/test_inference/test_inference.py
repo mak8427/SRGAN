@@ -7,7 +7,8 @@ import pytest
 
 
 class DummySRGAN:
-    def __init__(self, config_file_path=None):
+    def __init__(self, config=None, config_file_path=None):
+        self.config = config
         self.config_file_path = config_file_path
         self.eval_called = False
         self.to_device = None
@@ -26,12 +27,10 @@ class DummySRGAN:
     def load_state_dict(self, state, strict=False):
         self.loaded_state = (state, strict)
 
-    @classmethod
-    def load_from_checkpoint(cls, ckpt_path, map_location=None):
-        instance = cls(config_file_path="from_checkpoint")
-        instance.map_location = map_location
-        instance.ckpt_path = ckpt_path
-        return instance
+    def load_weights_from_checkpoint(self, ckpt_path, strict=False, map_location=None):
+        self.ckpt_path = ckpt_path
+        self.map_location = map_location
+        self.loaded_state = ("from_checkpoint", strict)
 
 
 @pytest.fixture(autouse=True)
@@ -56,12 +55,12 @@ def test_load_model_defaults_cpu(monkeypatch, inference_module):
     model, device = inference_module.load_model(config_path="cfg.yaml")
 
     assert device == "cpu"
-    assert model.config_file_path == "cfg.yaml"
+    assert model.config == "cfg.yaml"
     assert model.eval_called is True
     assert model.to_device == "cpu"
 
 
-def test_load_model_with_lightning_checkpoint(monkeypatch, inference_module):
+def test_load_model_with_checkpoint(monkeypatch, inference_module):
     monkeypatch.setattr(inference_module.torch.cuda, "is_available", lambda: False)
 
     model, device = inference_module.load_model(
@@ -71,26 +70,8 @@ def test_load_model_with_lightning_checkpoint(monkeypatch, inference_module):
     assert device == "cpu"
     assert model.ckpt_path == "weights.ckpt"
     assert model.map_location == "cpu"
+    assert model.loaded_state == ("from_checkpoint", False)
     assert model.eval_called is True
-    assert model.to_device == "cpu"
-
-
-def test_load_model_fallback_state_dict(monkeypatch, inference_module):
-    class FallbackSRGAN(DummySRGAN):
-        @classmethod
-        def load_from_checkpoint(cls, *args, **kwargs):
-            raise TypeError("force raw state dict")
-
-    loaded_state = {"state_dict": {"layer": 1}}
-
-    monkeypatch.setattr(inference_module, "SRGAN_model", FallbackSRGAN)
-    monkeypatch.setattr(inference_module.torch.cuda, "is_available", lambda: False)
-    monkeypatch.setattr(inference_module.torch, "load", lambda path, map_location=None: loaded_state)
-
-    model, device = inference_module.load_model(config_path="cfg.yaml", ckpt_path="fallback.ckpt")
-
-    assert device == "cpu"
-    assert model.loaded_state == (loaded_state["state_dict"], False)
     assert model.to_device == "cpu"
 
 

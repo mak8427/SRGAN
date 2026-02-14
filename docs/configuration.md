@@ -75,7 +75,7 @@ If you need to reuse the same function for both directions (for example
 | Key | Default | Description |
 | --- | --- | --- |
 | `in_bands` | 6 | Number of input channels expected by the generator and discriminator. |
-| `continue_training` | `False` | Path to a Lightning checkpoint for resuming training (`Trainer.fit(resume_from_checkpoint=...)`). |
+| `continue_training` | `False` | Path to a Lightning checkpoint for resuming training (`ckpt_path` on PL ≥ 2, `resume_from_checkpoint` on PL < 2). |
 | `load_checkpoint` | `False` | Path to a checkpoint used solely for weight initialisation (no training state restored). |
 
 ## Training

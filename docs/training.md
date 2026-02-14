@@ -38,8 +38,9 @@ The code performs the following, no matter if the script is launched form the CL
 2. **Parse arguments.** `argparse` reads the configuration path and ensures the file exists.
 3. **Load configuration.** `OmegaConf.load()` parses the YAML file into an object used throughout the run.
 4. **Construct the model.**
-   * If `Model.load_checkpoint` is set, the script calls `SRGAN_model.load_from_checkpoint()` to import the learned weights while
+   * If `Model.load_checkpoint` is set, the script calls `model.load_weights_from_checkpoint()` to import learned weights only while
      respecting the new configuration values. If `Model.continue_training` is passed with a path to a pretrained checkpoint, all scheduler states, epochs and step numbers, EMA weights, etc are loaded in order to seamlessly continue training from a previous run.
+   * `Model.load_checkpoint` and `Model.continue_training` are mutually exclusive. Use only one, depending on whether you want weight initialization or full training-state resume.
     * Otherwise, it initialises a fresh `SRGAN_model`, which immediately builds the generator/discriminator and prints a
       parameter summary.
 5. **Launch Training.** The training is launched with the model, weights and settings passed in the config.

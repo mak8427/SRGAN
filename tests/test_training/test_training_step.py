@@ -126,3 +126,40 @@ def test_training_step_pl2_runs_manual_optimization():
     assert torch.is_tensor(loss)
     assert "discriminator/adversarial_loss" in harness.logged
     assert "generator/total_loss" in harness.logged
+
+
+def test_load_weights_from_checkpoint_supports_state_dict_formats(monkeypatch):
+    model = SRGAN.SRGAN_model.__new__(SRGAN.SRGAN_model)
+
+    map_locations = []
+    checkpoints = iter(
+        [
+            {"state_dict": {"weight": torch.tensor([1.0])}},
+            {"weight": torch.tensor([2.0])},
+        ]
+    )
+
+    def fake_torch_load(path, map_location=None):
+        map_locations.append(map_location)
+        return next(checkpoints)
+
+    loaded_state = []
+
+    def fake_load_state_dict(state_dict, strict=False):
+        loaded_state.append((state_dict, strict))
+
+    monkeypatch.setattr(SRGAN.torch, "load", fake_torch_load)
+    model.load_state_dict = fake_load_state_dict
+
+    model.load_weights_from_checkpoint(
+        "with_state_dict.ckpt", map_location="cpu"
+    )
+    model.load_weights_from_checkpoint(
+        "raw_state_dict.ckpt", strict=True, map_location="meta"
+    )
+
+    assert map_locations == ["cpu", "meta"]
+    assert loaded_state[0][1] is False
+    assert torch.equal(loaded_state[0][0]["weight"], torch.tensor([1.0]))
+    assert loaded_state[1][1] is True
+    assert torch.equal(loaded_state[1][0]["weight"], torch.tensor([2.0]))

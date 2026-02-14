@@ -50,7 +50,8 @@ Update at least the following fields:
 
 * `Data.dataset_type`: Keep `ExampleDataset` for the bundled sample or switch to your custom key once you register a new dataset.
 * `Generator.scaling_factor`: Set the desired upscaling (e.g., `4` or `8`).
-* `Model.load_checkpoint`: Provide a path if you want to fine-tune an existing checkpoint.
+* `Model.load_checkpoint`: Provide a path if you want to initialize only model weights from an existing checkpoint.
+* `Model.continue_training`: Provide a path if you want to fully resume interrupted training (optimizer/scheduler/EMA/global-step state).
 * `Training.Losses.perceptual_metric`: Switch to `lpips` if you installed the optional dependency.
 
 See [Configuration](configuration.md) for a full breakdown of available options.
@@ -78,7 +79,7 @@ Both entry points will:
 3. Configure Weights & Biases and TensorBoard loggers alongside checkpointing and learning-rate monitoring callbacks.
 4. Start alternating generator/discriminator optimisation according to your warm-start schedule.
 
-Training resumes automatically if `Model.continue_training` points to a Lightning checkpoint. If you interrupt training, always use the `Model.continue_training` flag to pass the generated checkpoint, since that restores all optimizers, schedulers, EMA etc.
+Training resumes automatically if `Model.continue_training` points to a Lightning checkpoint. If you interrupt training, always use the `Model.continue_training` flag to pass the generated checkpoint, since that restores all optimizers, schedulers, EMA etc. Do not set `Model.load_checkpoint` and `Model.continue_training` at the same time.
 
 ## 5. Run validation or inference
 
@@ -105,7 +106,7 @@ Training resumes automatically if `Model.continue_training` points to a Lightnin
     from opensr_srgan.model.SRGAN import SRGAN_model
 
     model = SRGAN_model("your_config.yaml")
-    model.load_from_checkpoint("path/to/checkpoint.ckpt")
+    model.load_weights_from_checkpoint("path/to/checkpoint.ckpt")
     sr_tiles = model.predict_step(lr_tiles)
     ```
   In all cases the helpers automatically normalise Sentinel-2 ranges, apply histogram matching, and denormalise outputs for

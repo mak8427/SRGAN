@@ -33,6 +33,7 @@ def train(config):
     - Supports both PL < 2.0 and >= 2.0 via `build_lightning_kwargs`.
     - If `Model.load_checkpoint` is set, weights are loaded before training.
     - If `Model.continue_training` is set, training resumes from that checkpoint.
+    - Setting both `Model.load_checkpoint` and `Model.continue_training` is invalid.
     """
     # either path to config file or omegaconf object
 
@@ -55,19 +56,31 @@ def train(config):
     #############################################################################################################
     " LOAD MODEL "
     #############################################################################################################
-    # load pretrained or instanciate new
+    model_load_checkpoint = getattr(config.Model, "load_checkpoint", False)
+    resume_checkpoint = getattr(config.Model, "continue_training", False)
+
+    def _checkpoint_is_set(value) -> bool:
+        return value not in (False, None, "")
+
+    if _checkpoint_is_set(model_load_checkpoint) and _checkpoint_is_set(
+        resume_checkpoint
+    ):
+        raise ValueError(
+            "Model.load_checkpoint and Model.continue_training are mutually exclusive. "
+            "Use Model.load_checkpoint for weight initialization only, or "
+            "Model.continue_training to fully resume optimizer/scheduler/training state."
+        )
+
+    # load pretrained weights or instantiate new
     from opensr_srgan.model.SRGAN import SRGAN_model
 
-    if config.Model.load_checkpoint != False:
-        model = SRGAN_model.load_from_checkpoint(
-            config.Model.load_checkpoint, strict=False
-        )
-    else:
-        model = SRGAN_model(config=config)
-    if config.Model.continue_training != False:
-        resume_from_checkpoint_variable = config.Model.continue_training
-    else:
-        resume_from_checkpoint_variable = None
+    model = SRGAN_model(config=config)
+    if _checkpoint_is_set(model_load_checkpoint):
+        model.load_weights_from_checkpoint(model_load_checkpoint, strict=False)
+
+    resume_from_checkpoint_variable = (
+        resume_checkpoint if _checkpoint_is_set(resume_checkpoint) else None
+    )
 
     #############################################################################################################
     """ GET DATA """

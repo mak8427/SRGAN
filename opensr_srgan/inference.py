@@ -52,26 +52,18 @@ def load_model(config_path=None, ckpt_path=None, device=None):
     Notes
     -----
     - Automatically switches the model to evaluation mode.
-    - Tries to use the Lightning checkpoint API first; falls back to a raw `state_dict`
-      for compatibility with manually saved checkpoints.
+    - Uses ``SRGAN_model.load_weights_from_checkpoint`` for robust weight loading from
+      both Lightning checkpoints (with ``state_dict``) and raw state dict files.
     """
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    model = SRGAN_model(config_file_path=config_path).eval().to(device)
+    model = SRGAN_model(config=config_path).eval().to(device)
 
     if ckpt_path:
-        # Try Lightning API first (without 'strict'); fall back to raw state_dict
-        try:
-            model = (
-                SRGAN_model.load_from_checkpoint(ckpt_path, map_location=device)
-                .eval()
-                .to(device)
-            )
-        except TypeError:
-            state = torch.load(ckpt_path, map_location=device)
-            state = state.get("state_dict", state)
-            model.load_state_dict(state, strict=False)
+        model.load_weights_from_checkpoint(
+            ckpt_path, strict=False, map_location=device
+        )
 
     return model, device
 

@@ -1264,22 +1264,36 @@ class SRGAN_model(pl.LightningModule):
             sync_dist=True,
         )
 
-    def load_from_checkpoint(self, ckpt_path) -> None:
-        """Load model weights from a PyTorch Lightning checkpoint file.
+    def load_weights_from_checkpoint(
+        self, ckpt_path, strict: bool = False, map_location=None
+    ) -> None:
+        """Load model weights from a checkpoint into the current instance.
 
-        Loads the `state_dict` from the given checkpoint and maps it to the current device.
+        This helper is intentionally instance-based and distinct from Lightning's
+        classmethod ``load_from_checkpoint``. It supports:
+        - Lightning checkpoints containing a top-level ``state_dict`` key.
+        - Raw PyTorch state dictionaries saved directly via ``torch.save``.
 
         Args:
-            ckpt_path (str | pathlib.Path): Path to the `.ckpt` file saved by Lightning.
+            ckpt_path (str | pathlib.Path): Path to a checkpoint file.
+            strict (bool, optional): Forwarded to ``load_state_dict``.
+                Defaults to ``False`` for tolerant weight-only initialization.
+            map_location (str | torch.device | None, optional): Device mapping passed
+                to ``torch.load``. When ``None``, falls back to ``self.device``.
 
         Raises:
             FileNotFoundError: If the checkpoint path does not exist.
-            KeyError: If the checkpoint does not contain a `'state_dict'` entry.
+            RuntimeError: If deserialization or state loading fails.
         """
-        # load ckpt
-        ckpt = torch.load(ckpt_path, map_location=self.device)
-        self.load_state_dict(ckpt["state_dict"])
-        print(f"Loaded checkpoint from {ckpt_path}")
+        target_device = self.device if map_location is None else map_location
+        ckpt = torch.load(ckpt_path, map_location=target_device)
+        state_dict = (
+            ckpt["state_dict"]
+            if isinstance(ckpt, dict) and "state_dict" in ckpt
+            else ckpt
+        )
+        self.load_state_dict(state_dict, strict=strict)
+        print(f"Loaded weights from checkpoint {ckpt_path}")
 
 
 # Quick Testing

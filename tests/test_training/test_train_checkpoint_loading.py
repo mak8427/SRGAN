@@ -1,0 +1,203 @@
+import importlib
+import sys
+import types
+
+import pytest
+from omegaconf import OmegaConf
+
+
+def _make_config(load_checkpoint=False, continue_training=False):
+    return OmegaConf.create(
+        {
+            "Model": {
+                "in_bands": 4,
+                "load_checkpoint": load_checkpoint,
+                "continue_training": continue_training,
+            },
+            "Training": {
+                "gpus": [0],
+            },
+            "Schedulers": {
+                "metric_g": "val_metrics/l1",
+            },
+            "Optimizers": {
+                "gradient_clip_val": 0.0,
+            },
+            "Logging": {
+                "wandb": {
+                    "enabled": False,
+                    "project": "unit-tests",
+                    "entity": "unit",
+                }
+            },
+        }
+    )
+
+
+@pytest.fixture()
+def train_module(monkeypatch):
+    state = {}
+
+    # ------------------------------------------------------------------
+    # Third-party stubs imported by opensr_srgan.train
+    # ------------------------------------------------------------------
+    wandb_mod = types.ModuleType("wandb")
+
+    def _wandb_finish():
+        state["wandb_finish_calls"] = state.get("wandb_finish_calls", 0) + 1
+
+    wandb_mod.finish = _wandb_finish
+    monkeypatch.setitem(sys.modules, "wandb", wandb_mod)
+
+    pl_mod = types.ModuleType("pytorch_lightning")
+
+    class DummyTrainer:
+        def __init__(self, **kwargs):
+            state["trainer_kwargs"] = kwargs
+
+        def fit(self, model, datamodule=None, **kwargs):
+            state["fit_call"] = {
+                "model": model,
+                "datamodule": datamodule,
+                "kwargs": kwargs,
+            }
+
+    pl_mod.Trainer = DummyTrainer
+    pl_mod.__version__ = "2.2.0"
+    monkeypatch.setitem(sys.modules, "pytorch_lightning", pl_mod)
+
+    loggers_mod = types.ModuleType("pytorch_lightning.loggers")
+
+    class CSVLogger:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    class WandbLogger:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    loggers_mod.CSVLogger = CSVLogger
+    loggers_mod.WandbLogger = WandbLogger
+    monkeypatch.setitem(sys.modules, "pytorch_lightning.loggers", loggers_mod)
+
+    callbacks_mod = types.ModuleType("pytorch_lightning.callbacks")
+
+    class ModelCheckpoint:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    callbacks_mod.ModelCheckpoint = ModelCheckpoint
+    monkeypatch.setitem(sys.modules, "pytorch_lightning.callbacks", callbacks_mod)
+
+    early_stopping_mod = types.ModuleType(
+        "pytorch_lightning.callbacks.early_stopping"
+    )
+
+    class EarlyStopping:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    early_stopping_mod.EarlyStopping = EarlyStopping
+    monkeypatch.setitem(
+        sys.modules, "pytorch_lightning.callbacks.early_stopping", early_stopping_mod
+    )
+
+    # ------------------------------------------------------------------
+    # Internal module stubs imported by train()
+    # ------------------------------------------------------------------
+    srgan_mod = types.ModuleType("opensr_srgan.model.SRGAN")
+
+    class DummySRGANModel:
+        instances = []
+
+        def __init__(self, config=None, **kwargs):
+            self.config = config
+            self.kwargs = kwargs
+            self.loaded_weights_calls = []
+            DummySRGANModel.instances.append(self)
+
+        @classmethod
+        def load_from_checkpoint(cls, *args, **kwargs):  # pragma: no cover
+            raise AssertionError("train() must not use class-level load_from_checkpoint")
+
+        def load_weights_from_checkpoint(
+            self, ckpt_path, strict=False, map_location=None
+        ):
+            self.loaded_weights_calls.append((ckpt_path, strict, map_location))
+
+    srgan_mod.SRGAN_model = DummySRGANModel
+    monkeypatch.setitem(sys.modules, "opensr_srgan.model.SRGAN", srgan_mod)
+    state["model_class"] = DummySRGANModel
+
+    dataset_mod = types.ModuleType("opensr_srgan.data.dataset_selector")
+
+    def select_dataset(config):
+        state["selected_dataset_config"] = config
+        return "DUMMY_DATAMODULE"
+
+    dataset_mod.select_dataset = select_dataset
+    monkeypatch.setitem(sys.modules, "opensr_srgan.data.dataset_selector", dataset_mod)
+
+    trainer_kwargs_mod = types.ModuleType("opensr_srgan.utils.build_trainer_kwargs")
+
+    def build_lightning_kwargs(
+        config, logger, checkpoint_callback, early_stop_callback, resume_ckpt=None
+    ):
+        state["resume_ckpt"] = resume_ckpt
+        return {"max_epochs": 1}, (
+            {"ckpt_path": resume_ckpt} if resume_ckpt is not None else {}
+        )
+
+    trainer_kwargs_mod.build_lightning_kwargs = build_lightning_kwargs
+    monkeypatch.setitem(
+        sys.modules, "opensr_srgan.utils.build_trainer_kwargs", trainer_kwargs_mod
+    )
+
+    gpu_rank_mod = types.ModuleType("opensr_srgan.utils.gpu_rank")
+    gpu_rank_mod._is_global_zero = lambda: False
+    monkeypatch.setitem(sys.modules, "opensr_srgan.utils.gpu_rank", gpu_rank_mod)
+
+    train_mod = importlib.reload(importlib.import_module("opensr_srgan.train"))
+    return train_mod, state
+
+
+def test_train_uses_instance_weight_loader_for_load_checkpoint(train_module):
+    train_mod, state = train_module
+    config = _make_config(load_checkpoint="weights.ckpt", continue_training=False)
+
+    train_mod.train(config)
+
+    model = state["model_class"].instances[0]
+    assert model.loaded_weights_calls == [("weights.ckpt", False, None)]
+    assert state["resume_ckpt"] is None
+    assert state["fit_call"]["model"] is model
+    assert state["fit_call"]["datamodule"] == "DUMMY_DATAMODULE"
+    assert state["fit_call"]["kwargs"] == {}
+
+
+def test_train_passes_continue_training_to_fit_checkpoint_path(train_module):
+    train_mod, state = train_module
+    config = _make_config(load_checkpoint=False, continue_training="resume.ckpt")
+
+    train_mod.train(config)
+
+    model = state["model_class"].instances[0]
+    assert model.loaded_weights_calls == []
+    assert state["resume_ckpt"] == "resume.ckpt"
+    assert state["fit_call"]["kwargs"] == {"ckpt_path": "resume.ckpt"}
+
+
+def test_train_rejects_load_and_continue_combination(train_module):
+    train_mod, state = train_module
+    config = _make_config(
+        load_checkpoint="weights.ckpt", continue_training="resume.ckpt"
+    )
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        train_mod.train(config)
+
+    assert state["model_class"].instances == []
