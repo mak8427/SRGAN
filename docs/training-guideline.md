@@ -36,7 +36,7 @@ After the loss stabilizes, the generator continues to be trained while the discr
 ![gen_warmup](assets/pretrain_phase.png)  
 
 #### Discriminator 
-Once the `training/pretrain_phase` flag is `0`, pretraining of the generator is no longer active and the discriminator starts to be trained. Not only is is trained, but it's true/false prediction is also added to the generator to start the adversarial *game*. In order not to train the generator on the low-quality output of the discriminator at this early stageg, we only gradually feed the discriminators output to the generator as a loss. For that, we slowly increase the adversarial loss weight from `0` to the predetermined amount. The loss weight is logged to WandB in order to visualize the influnce this loss has on the generator.
+Once the `training/pretrain_phase` flag is `0`, pretraining of the generator is no longer active and the discriminator starts to be trained. Not only is it trained, but its true/false prediction is also added to the generator to start the adversarial *game*. To avoid training the generator on low-quality discriminator outputs at this early stage, we gradually feed the discriminator output to the generator as a loss. For that, we slowly increase the adversarial loss weight from `0` to the predetermined amount. The loss weight is logged to WandB in order to visualize the influence this loss has on the generator.
 ![adv_warmup](assets/adv_loss_warmup.png)  
 
 #### Continued Training

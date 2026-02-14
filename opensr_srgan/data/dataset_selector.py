@@ -120,7 +120,7 @@ def select_dataset(config):
     elif dataset_selection == "ExampleDataset":
         from opensr_srgan.data.example_data.example_dataset import ExampleDataset
         print("WARNING -- Using Example Dataset!")
-        print("This dataset is exclusively meant for demonstration annd debugging, not training or evaluation.")
+        print("This dataset is exclusively meant for demonstration and debugging, not training or evaluation.")
         print("Please use a proper dataset for any serious work.")
         path = "example_dataset/"
         ds_train = ExampleDataset(folder=path, phase="train")
@@ -131,7 +131,7 @@ def select_dataset(config):
         # Centralized error so unsupported keys fail loudly & clearly.
         raise NotImplementedError(
             f"Dataset {dataset_selection} not implemented!"
-            f"This can happen happens when:"
+            f"This can happen when:"
             f" - (a) you misspelled the dataset name in the config"
             f" - (b) the dataset is not implemented in the data folder."
             f" - (c) you are trying to use a custom dataset but forgot to add it in data/dataset_selector.py."

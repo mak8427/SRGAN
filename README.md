@@ -11,7 +11,7 @@
 
 # 🌍 Single Image Super-Resolution Remote Sensing 'SRGAN'
 
-**Remote-Sensing-SRGAN** is a research-grade GAN framework for super-resolution of Sentinel-2 and other remote-sensing imagery. It is specifically **not meant for SOTA performance, but quick implementation and experimentation**. It supports arbitrary band counts, configurable generator/discriminator designs, scalable depth/width, and a modular loss system designed for stable GAN training on EO data. Check out how inference and training works right now in this interactove example! [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/16W0FWr6py1J8P4po7JbNDMaepHUM97yL?usp=sharing)
+**Remote-Sensing-SRGAN** is a research-grade GAN framework for super-resolution of Sentinel-2 and other remote-sensing imagery. It is specifically **not meant for SOTA performance, but quick implementation and experimentation**. It supports arbitrary band counts, configurable generator/discriminator designs, scalable depth/width, and a modular loss system designed for stable GAN training on EO data. Check out how inference and training works right now in this interactive example! [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/16W0FWr6py1J8P4po7JbNDMaepHUM97yL?usp=sharing)
 
 
 ---
@@ -75,7 +75,7 @@ Follow the [installation instructions](https://srgan.opensr.eu/getting-started/)
 
 * To test the package immediately, launch the Google Colab right now and follow along the introduction! [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/16W0FWr6py1J8P4po7JbNDMaepHUM97yL?usp=sharing) 
 * **Datasets:** Grab the bundled example dataset or learn how to register your own sources in the [data guide](https://srgan.opensr.eu/data/).
-* **Training:** Launch training with `python -m opensr_srgan.train --config opensr_srgan/configs/config.yaml` or import `train` from the package as described in the [training walkthrough](https://srgan.opensr.eu/training/).
+* **Training:** Launch training with `python -m opensr_srgan.train --config opensr_srgan/configs/config_10m.yaml` or import `train` from the package as described in the [training walkthrough](https://srgan.opensr.eu/training/).
 * **Inference:** Ready-made presets and large-scene pipelines are described in the [inference section](https://srgan.opensr.eu/getting-started/inference/).
 
 ---
@@ -130,9 +130,8 @@ If you use this work, please cite:
 
 ## 🧑‍🚀 Authors, Acknowledgements, and Notes on AI Usage
 
-Developed within the **ESA Φ-lab / OpenSR** initiative. Simon Donike is the main contributor and maintainer of the repository. Cesar Aybar and Julio Contreras contributed the datasets as well as implementation, documentation and publishing support. Prof. Luis Gómez-Chova contributed the remote sensing-spefific perspective and signal processing advice.  
+Developed within the **ESA Φ-lab / OpenSR** initiative. Simon Donike is the main contributor and maintainer of the repository. Cesar Aybar and Julio Contreras contributed the datasets as well as implementation, documentation and publishing support. Prof. Luis Gómez-Chova contributed the remote sensing-specific perspective and signal processing advice.  
 > The development history of this code began in 2020 with the implementation of an SR-GAN for a MSc thesis project. Since then, over several iterations, the codebase has been expanded and many training tweaks implemented, based on the experiences made training SR-GANs for the OpenSR project. The fundamental training outline, training tweaks, normalizations, and inference procedures are built upon that experience.  
 The added complexity that came with (a) the implementation of many different models and blocks, (b) more data sources, (c) according normalizations, and (d) complex testing and documentation structures, was handled to varying degrees with the help of *Codex*. Specifically, the docs, the automated testing workflows, and the normalizer class are in part AI generated. This code and its functionalities have been verified and tested to the best of my ability.
 
 ---
-
