@@ -1,11 +1,8 @@
-# put this near the top of your module (e.g., in opensr_srgan/train.py)
-import os
 import inspect
 from collections.abc import Sequence
 
 import torch
 import pytorch_lightning as pl
-from packaging.version import Version
 
 
 def build_lightning_kwargs(
@@ -15,19 +12,15 @@ def build_lightning_kwargs(
     early_stop_callback,
     resume_ckpt: str | None = None,
 ):
-    """Return Trainer/fit keyword arguments compatible with Lightning < 2 and ≥ 2.
+    """Return Trainer/fit keyword arguments for Lightning 2+.
 
     Builds two dictionaries:
-    1) ``trainer_kwargs`` — safe, version-aware arguments for ``pytorch_lightning.Trainer``.
-    2) ``fit_kwargs`` — arguments for ``Trainer.fit`` (e.g., ``ckpt_path`` on PL ≥ 2).
+    1) ``trainer_kwargs`` — arguments for ``pytorch_lightning.Trainer``.
+    2) ``fit_kwargs`` — arguments for ``Trainer.fit`` (e.g., ``ckpt_path``).
 
     The helper normalizes device configuration (CPU/GPU, DDP when multiple GPUs),
-    removes deprecated/None entries, and maps the legacy resume API:
-    - PL < 2: uses ``resume_from_checkpoint`` in ``trainer_kwargs``.
-    - PL ≥ 2: uses ``ckpt_path`` in ``fit_kwargs`` (if supported by signature).
-
-    It also clears the legacy environment variable
-    ``PL_TRAINER_RESUME_FROM_CHECKPOINT`` to avoid non-deterministic resume behavior.
+    removes ``None`` entries, and filters kwargs against the active Lightning
+    signatures to avoid passing unsupported arguments.
 
     Args:
         config: OmegaConf-like config with ``Training`` fields:
@@ -44,7 +37,7 @@ def build_lightning_kwargs(
     Returns:
         Tuple[Dict[str, Any], Dict[str, Any]]:
             - trainer_kwargs: Dict for ``pl.Trainer(**trainer_kwargs)``.
-            - fit_kwargs: Dict for ``trainer.fit(..., **fit_kwargs)`` (may be empty).
+            - fit_kwargs: Dict for ``trainer.fit(..., **fit_kwargs)``.
 
     Raises:
         ValueError: If ``Training.device`` is not one of {"auto","cpu","cuda","gpu"}.
@@ -52,27 +45,11 @@ def build_lightning_kwargs(
     Notes:
         - CPU runs force ``devices=1`` and no strategy.
         - GPU runs honor ``Training.gpus``; DDP is enabled when requesting >1 device.
-        - All ``None`` values are pruned; kwargs are filtered to match the current
-        ``Trainer.__init__`` and ``Trainer.fit`` signatures to stay future-proof.
+        - Resume checkpoints are forwarded through ``Trainer.fit(ckpt_path=...)``.
     """
 
     # ---------------------------------------------------------------------
-    # 1) Version detection and environment cleanup
-    # ---------------------------------------------------------------------
-    # Determine whether the installed Lightning version is 2.x or newer.
-    # The behaviour of ``resume_from_checkpoint`` changed between major
-    # versions, so we compute this once and use the flag later when assembling
-    # the kwargs.
-    is_v2 = Version(pl.__version__) >= Version("2.0.0")
-
-    # Lightning < 2 used an environment variable to infer the checkpoint path
-    # when resuming.  The variable is ignored (and in some cases triggers
-    # warnings) on newer versions, so we proactively remove it to provide a
-    # deterministic behaviour across environments.
-    os.environ.pop("PL_TRAINER_RESUME_FROM_CHECKPOINT", None)
-
-    # ---------------------------------------------------------------------
-    # 2) Parse device configuration from the OmegaConf config
+    # 1) Parse device configuration from the OmegaConf config
     # ---------------------------------------------------------------------
     # ``Training.gpus`` may be specified either as an integer (e.g. ``2``) or a
     # sequence (e.g. ``[0, 1]``).  We keep the raw object so it can be passed to
@@ -122,10 +99,20 @@ def build_lightning_kwargs(
         strategy = None
     else:
         devices = devices_cfg if ndev else 1
-        strategy = "ddp" if ndev > 1 else None
+        if ndev > 1:
+            # GAN manual optimization updates only one optimizer branch at a time,
+            # so DDP must track unused params on each step.
+            find_unused = bool(
+                getattr(config.Training, "find_unused_parameters", True)
+            )
+            strategy = (
+                "ddp_find_unused_parameters_true" if find_unused else "ddp"
+            )
+        else:
+            strategy = None
 
     # ---------------------------------------------------------------------
-    # 3) Assemble the base Trainer kwargs shared across Lightning versions
+    # 2) Assemble the base Trainer kwargs
     # ---------------------------------------------------------------------
     trainer_kwargs = dict(
         accelerator=accelerator,
@@ -146,12 +133,6 @@ def build_lightning_kwargs(
     # kwargs.
     trainer_kwargs = {k: v for k, v in trainer_kwargs.items() if v is not None}
 
-    # ---------------------------------------------------------------------
-    # 4) Add compatibility shims for pre-Lightning 2 releases
-    # ---------------------------------------------------------------------
-    if not is_v2 and resume_ckpt:
-        trainer_kwargs["resume_from_checkpoint"] = resume_ckpt
-
     # Some Lightning releases occasionally deprecate constructor arguments.  To
     # ensure we do not pass stale options we filter the dictionary so it only
     # contains parameters that are still accepted by ``Trainer.__init__``.
@@ -159,11 +140,10 @@ def build_lightning_kwargs(
     trainer_kwargs = {k: v for k, v in trainer_kwargs.items() if k in init_sig}
 
     # ---------------------------------------------------------------------
-    # 5) ``Trainer.fit`` keyword arguments (Lightning >= 2)
+    # 3) ``Trainer.fit`` keyword arguments
     # ---------------------------------------------------------------------
     fit_kwargs = {}
-    if is_v2 and resume_ckpt:
-        # ``ckpt_path`` is the new name for ``resume_from_checkpoint``.
+    if resume_ckpt:
         fit_sig = inspect.signature(pl.Trainer.fit).parameters
         if "ckpt_path" in fit_sig:
             fit_kwargs["ckpt_path"] = resume_ckpt

@@ -1,5 +1,6 @@
 import types
 
+import pytest
 import torch
 
 from opensr_srgan.model import SRGAN
@@ -79,33 +80,23 @@ def _sample_batch():
     return lr, hr
 
 
-def test_setup_lightning_selects_training_step_branches():
+def test_setup_lightning_configures_manual_step_for_pl2(monkeypatch):
+    monkeypatch.setattr(SRGAN.pl, "__version__", "2.2.0")
     model = SRGAN.SRGAN_model.__new__(SRGAN.SRGAN_model)
-    model.pl_version = (2, 0, 0)
-    model.automatic_optimization = True
     model.setup_lightning()
     assert model.automatic_optimization is False
     assert model._training_step_implementation.__func__ is training_step_PL.training_step_PL2
 
+
+def test_setup_lightning_rejects_pre_v2(monkeypatch):
+    monkeypatch.setattr(SRGAN.pl, "__version__", "1.9.5")
     model = SRGAN.SRGAN_model.__new__(SRGAN.SRGAN_model)
-    model.pl_version = (1, 9, 0)
-    model.automatic_optimization = True
-    model.setup_lightning()
-    assert model.automatic_optimization is True
-    assert model._training_step_implementation.__func__ is training_step_PL.training_step_PL1
-
-
-def test_training_step_pl1_handles_pretraining_branch():
-    harness = TrainingHarness(pretrain=True)
-    loss = training_step_PL.training_step_PL1(harness, _sample_batch(), batch_idx=0, optimizer_idx=1)
-    assert torch.is_tensor(loss)
-    assert harness.logged["training/pretrain_phase"] == 1.0
-    assert "generator/content_loss" in harness.logged
+    with pytest.raises(RuntimeError, match="requires PyTorch Lightning >= 2.0"):
+        model.setup_lightning()
 
 
 def test_training_step_pl2_runs_manual_optimization():
     harness = TrainingHarness(pretrain=False)
-    harness.pl_version = (2, 0, 0)
     harness.automatic_optimization = False
 
     loss = training_step_PL.training_step_PL2(harness, _sample_batch(), batch_idx=0)

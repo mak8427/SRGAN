@@ -9,13 +9,11 @@ Training entry point for SRGAN using PyTorch Lightning.
 import datetime
 import os
 from pathlib import Path
-from multiprocessing import freeze_support
 
 import torch
 import wandb
 from omegaconf import OmegaConf
 import pytorch_lightning as pl
-from pytorch_lightning import Trainer
 
 
 def train(config):
@@ -30,7 +28,7 @@ def train(config):
 
     Notes
     -----
-    - Supports both PL < 2.0 and >= 2.0 via `build_lightning_kwargs`.
+    - Requires PyTorch Lightning >= 2.0.
     - If `Model.load_checkpoint` is set, weights are loaded before training.
     - If `Model.continue_training` is set, training resumes from that checkpoint.
     - Setting both `Model.load_checkpoint` and `Model.continue_training` is invalid.
@@ -49,11 +47,6 @@ def train(config):
         )
     #############################################################################################################
 
-    # Get devices
-    cuda_devices = config.Training.gpus
-    cuda_strategy = "ddp" if len(cuda_devices) > 1 else None
-
-    #############################################################################################################
     " LOAD MODEL "
     #############################################################################################################
     model_load_checkpoint = getattr(config.Model, "load_checkpoint", False)
@@ -78,9 +71,7 @@ def train(config):
     if _checkpoint_is_set(model_load_checkpoint):
         model.load_weights_from_checkpoint(model_load_checkpoint, strict=False)
 
-    resume_from_checkpoint_variable = (
-        resume_checkpoint if _checkpoint_is_set(resume_checkpoint) else None
-    )
+    resume_ckpt = resume_checkpoint if _checkpoint_is_set(resume_checkpoint) else None
 
     #############################################################################################################
     """ GET DATA """
@@ -152,17 +143,17 @@ def train(config):
 
     #############################################################################################################
     """ Set Args for Training and Start Training """
-    """ make it robust for both PL<2.0 and PL>=2.0 """
+    """ Build trainer kwargs and launch training """
     #############################################################################################################
     from opensr_srgan.utils.build_trainer_kwargs import build_lightning_kwargs
 
     trainer_kwargs, fit_kwargs = (
-        build_lightning_kwargs(  # get kwargs depending on PL version
+        build_lightning_kwargs(
             config=config,
             logger=wandb_logger,
             checkpoint_callback=checkpoint_callback,
             early_stop_callback=early_stop_callback,
-            resume_ckpt=resume_from_checkpoint_variable,
+            resume_ckpt=resume_ckpt,
         )
     )
 
