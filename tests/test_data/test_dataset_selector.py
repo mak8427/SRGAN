@@ -154,6 +154,21 @@ class _StubWorldWideDataset(Dataset):
         return self._data[idx]
 
 
+class _StubLRHRFolderDataset(Dataset):
+    created_args = []
+
+    def __init__(self, root_folder, phase, **kwargs):
+        self.__class__.created_args.append((root_folder, phase, kwargs))
+        self._data = torch.arange(3, dtype=torch.float32)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __getitem__(self, idx):
+        value = self._data[idx]
+        return {"LR": value, "HR": value + 1, "filename": f"{idx}.npy"}
+
+
 def _install_module(monkeypatch, name, is_package=False, **attrs):
     module = types.ModuleType(name)
     if is_package:
@@ -253,6 +268,35 @@ def test_select_dataset_sisr_ww_branch(monkeypatch):
     assert len(_StubWorldWideDataset.created_kwargs) == 2
     assert _StubWorldWideDataset.created_kwargs[0]["split"] == "train"
     assert _StubWorldWideDataset.created_kwargs[1]["split"] == "val"
+
+
+def test_select_dataset_lrhr_folder_branch(monkeypatch):
+    _StubLRHRFolderDataset.created_args.clear()
+    _install_module(monkeypatch, "opensr_srgan.data.lrhr_folder", is_package=True)
+    _install_module(
+        monkeypatch,
+        "opensr_srgan.data.lrhr_folder.lrhr_folder_dataset",
+        LRHRFolderDataset=_StubLRHRFolderDataset,
+    )
+
+    config = _make_config(
+        dataset_type="LRHRFolderDataset",
+        dataset_root="/tmp/my_dataset_root",
+        train_batch_size=2,
+        val_batch_size=2,
+        num_workers=0,
+    )
+
+    datamodule = dataset_selector.select_dataset(config)
+    train_loader = datamodule.train_dataloader()
+    train_batch = next(iter(train_loader))
+
+    assert _StubLRHRFolderDataset.created_args == [
+        ("/tmp/my_dataset_root", "train", {"normalization": "identity"}),
+        ("/tmp/my_dataset_root", "val", {"normalization": "identity"}),
+    ]
+    assert isinstance(train_batch, (list, tuple))
+    assert len(train_batch) == 2
 
 
 def test_dataset_selector_module_main_guard(monkeypatch):
