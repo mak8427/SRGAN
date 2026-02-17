@@ -85,7 +85,7 @@ If you need to reuse the same function for both directions (for example
 | Key | Default | Description |
 | --- | --- | --- |
 | `pretrain_g_only` | `True` | Enable generator-only warm-up before adversarial updates. |
-| `g_pretrain_steps` | `10000` | Number of optimiser steps spent in the warm-up phase. |
+| `g_pretrain_steps` | `10000` | Number of optimiser steps spent in the warm-up phase (hardwired to L1-only optimization). |
 | `adv_loss_ramp_steps` | `5000` | Duration of the adversarial weight ramp after the warm-up. |
 | `label_smoothing` | `True` | Replaces target value 1.0 with 0.9 for real examples to stabilise discriminator training. |
 

@@ -6,7 +6,7 @@ def training_step_PL2(self, batch, batch_idx):
 
     Performs two explicit optimizer updates per batch:
     - **Pretraining phase**: Discriminator logs dummies; Generator is optimized with
-      content loss only (no adversarial term), and EMA optionally updates.
+      hardwired L1 loss only (no adversarial term), and EMA optionally updates.
     - **Adversarial phase**: Performs a Discriminator step (real vs. fake BCE),
       followed by a Generator step (content + λ_adv · BCE against ones).
 
@@ -75,7 +75,7 @@ def training_step_PL2(self, batch, batch_idx):
     )
 
     # ======================================================================
-    # SECTION: Pretraining branch (content-only on G; D logs dummies)
+    # SECTION: Pretraining branch (L1-only on G; D logs dummies)
     # ======================================================================
     if pretrain_phase:
         # --- D dummy logs (no step during pretraining) ---
@@ -85,10 +85,9 @@ def training_step_PL2(self, batch, batch_idx):
             self.log("discriminator/D(G(x))_prob", zero, prog_bar=True, sync_dist=True)
             self.log("discriminator/adversarial_loss", zero, sync_dist=True)
 
-        # --- G step: content loss only ---
-        content_loss, metrics = self.content_loss_criterion.return_loss(
-            sr_imgs, hr_imgs
-        )
+        # --- G step: hardwired L1-only pretraining loss ---
+        content_loss = torch.nn.functional.l1_loss(sr_imgs, hr_imgs)
+        metrics = {"l1": content_loss.detach()}
         self._log_generator_content_loss(content_loss)
         for key, value in metrics.items():
             self.log(f"train_metrics/{key}", value, sync_dist=True)

@@ -66,13 +66,13 @@ dashboard quickly reveals which subsystem is active at any given step.
 | `discriminator/adversarial_loss` | Binary cross-entropy loss of the discriminator on real vs. fake batches. | Drops below ~0.7 as the discriminator learns; continues trending down when D keeps up. |
 | `discriminator/D(y)_prob` | Mean discriminator confidence that HR inputs are real. | Rises toward 0.8–1.0 during stable training. |
 | `discriminator/D(G(x))_prob` | Mean discriminator confidence that SR predictions are real. | Starts low (~0.0–0.2) and climbs toward 0.5 as the generator improves. |
-| `train_metrics/l1` | Mean absolute error between SR and HR tensors. | Decreases toward 0 as reconstructions sharpen. |
+| `train_metrics/l1` | Mean absolute error between SR and HR tensors. In generator-only pretraining this is the hardwired optimization target. | Decreases toward 0 as reconstructions sharpen. |
 | `train_metrics/sam` | Spectral angle mapper (radians) averaged over pixels. | Falls toward 0; values <0.1 indicate strong spectral fidelity. |
 | `train_metrics/perceptual` | Perceptual distance (VGG or LPIPS) on selected RGB bands. | Decreases as textures align; exact range depends on the chosen metric. |
 | `train_metrics/tv` | Total variation penalty capturing SR smoothness. | Remains small; near-zero means little high-frequency noise. |
 | `train_metrics/psnr` | Peak signal-to-noise ratio (dB) on normalised tensors. | Climbs above 20 dB early; mature models reach 25–35 dB depending on data. |
 | `train_metrics/ssim` | Structural Similarity Index (0–1). | Increases toward 1.0; >0.8 is typical for converged runs. |
-| `generator/content_loss` | Weighted content portion of the generator objective. | Mirrors the trend of `train_metrics/*` losses and should steadily decline. |
+| `generator/content_loss` | Generator objective used for the current phase: hardwired L1 during generator-only pretraining, then weighted content loss afterwards. | Should steadily decline and remain stable when adversarial training starts. |
 | `generator/total_loss` | Sum of content and adversarial terms used to update the generator. | Tracks `generator/content_loss` early, then stabilises once adversarial weight ramps in. |
 | `val_metrics/l1` | Validation MAE. | Should roughly match `train_metrics/l1`; lower is better. |
 | `val_metrics/sam` | Validation SAM. | Mirrors the training trend; values <0.1 rad indicate good spectra. |
