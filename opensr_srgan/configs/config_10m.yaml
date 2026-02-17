@@ -101,8 +101,8 @@ Discriminator:
 # 🧮 OPTIMIZATION SETTINGS
 # ---------------------------------------------------------------------------- #
 Optimizers:
-  optim_g_lr: 1e-3             # Learning rate for Generator
-  optim_d_lr: 5e-3             # Learning rate for Discriminator (TTUR: slower than generator)
+  optim_g_lr: 1e-5             # Learning rate for Generator
+  optim_d_lr: 5e-5             # Learning rate for Discriminator (TTUR: slower than generator)
   gradient_clip_val: 0        # Gradient clipping value (0 disables clipping)
   betas: [0.0, 0.99]          # optional
   eps: 1.0e-7                 # optional
