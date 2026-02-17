@@ -58,7 +58,7 @@ The schedule and ramp make training **easier, safer, and more reproducible**.
 | Component | Options | Config keys |
 |-----------|---------|-------------|
 | **Generators** | `SRResNet`, `res`, `rcab`, `rrdb`, `lka`, `esrgan`, `stochastic_gan` | `Generator.model_type`, depth via `Generator.n_blocks`, width via `Generator.n_channels`, kernels/scale plus ESRGAN-specific `growth_channels`, `res_scale`, `out_channels`. |
-| **Discriminators** | `standard` SRGAN CNN, `patchgan`, `esrgan` | `Discriminator.model_type`, granularity with `Discriminator.n_blocks`, spectral norm toggle via `Discriminator.use_spectral_norm`, ESRGAN-specific `base_channels`, `linear_size`. |
+| **Discriminators** | `standard` `SRGAN`, `CNN`, `patchgan`, `esrgan` | `Discriminator.model_type`, granularity with `Discriminator.n_blocks`, spectral norm toggle via `Discriminator.use_spectral_norm`, ESRGAN-specific `base_channels`, `linear_size`. |
 | **Content losses** | L1, Spectral Angle Mapper, VGG19/LPIPS perceptual metrics, Total Variation | Weighted by `Training.Losses.*` (e.g. `l1_weight`, `sam_weight`, `perceptual_weight`, `perceptual_metric`, `tv_weight`). |
 | **Adversarial loss** | BCE‑with‑logits on real/fake logits | Warmup via `Training.pretrain_g_only`, ramped by `adv_loss_ramp_steps`, capped at `adv_loss_beta`, optional label smoothing. |
 
