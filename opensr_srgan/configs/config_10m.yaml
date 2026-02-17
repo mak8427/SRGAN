@@ -39,13 +39,13 @@ Training:
   gpus: [0,1]                    # Number of GPUs to use, individually in list form, e.g. [0] or [0,2]
   # --- General Training Setup
   max_epochs: 9999            # Maximum number of training epochs
-  val_check_interval: 0.25     # Validate at x percent of epoch (float) or every N steps (int)
-  limit_val_batches: 250      # Limit number of validation batches
+  val_check_interval: 1.      # Validate at x percent of epoch (float) or every N Epochs (int)
+  limit_val_batches: 100      # Limit number of validation batches
   
   # --- Pretraining and adversarial setup ---
   pretrain_g_only: True        # Train generator only for initial phase
-  g_pretrain_steps: 20000      # Number of generator-only warmup steps
-  adv_loss_ramp_steps: 5000    # Gradual adversarial weight ramp steps
+  g_pretrain_steps: 5000      # Number of generator-only warmup steps
+  adv_loss_ramp_steps: 1000    # Gradual adversarial weight ramp steps
   label_smoothing: True        # Discriminator target smoothing (1.0 → 0.9)
 
   EMA:
@@ -63,9 +63,10 @@ Training:
 
     # --- Content loss components (GeneratorContentLoss) ---
     l1_weight: 1.0             # L1 loss over all bands
-    sam_weight: 0.05           # Spectral Angle Mapper loss
-    perceptual_weight: 0.2     # Perceptual similarity term weight
-    perceptual_metric: 'vgg'   # ['vgg', 'lpips'] - LPIPS requires pip install lpips
+    sam_weight: 0.00           # Spectral Angle Mapper loss
+    perceptual_weight: 0.05    # Perceptual similarity term weight (keep moderate for 4-band data)
+    perceptual_metric: 'vgg'   # ['vgg', 'lpips'] - LPIPS requires !pip install lpips
+    fixed_idx: [0, 1, 2]       # Use RGB channels for perceptual loss on multispectral data
     tv_weight: 0.0             # Total Variation regularization (optional)
 
     # --- Metric evaluation settings ---
@@ -87,6 +88,7 @@ Generator:
   scaling_factor: 4            # Upscaling factor (e.g., 2×, 4×, 8×)
   growth_channels: 32          # ESRGAN-specific RRDB growth channels (ignored otherwise)
   res_scale: 0.2               # Residual scaling used by stochastic/ESRGAN variants
+  use_icnr: True               # Initialize PixelShuffle convs with ICNR to reduce checkerboard artifacts
 
 Discriminator:
   model_type: 'esrgan'       # Discriminator architecture selector ['standard', 'patchgan', 'esrgan']
@@ -100,8 +102,8 @@ Discriminator:
 # ---------------------------------------------------------------------------- #
 Optimizers:
   optim_g_lr: 1e-4             # Learning rate for Generator
-  optim_d_lr: 1e-4             # Learning rate for Discriminator
-  gradient_clip_val: 1.        # Gradient clipping value (0 disables clipping)
+  optim_d_lr: 5e-5             # Learning rate for Discriminator (TTUR: slower than generator)
+  gradient_clip_val: 0        # Gradient clipping value (0 disables clipping)
   betas: [0.0, 0.99]          # optional
   eps: 1.0e-7                 # optional
   weight_decay_g: 0.0         # optional

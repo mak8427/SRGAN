@@ -53,7 +53,9 @@ The generator zoo lives under `opensr_srgan/model/generators/` and can be select
 * **Stochastic GAN generator (`cgan_generator.py`).** Extends the flexible generator with conditioning inputs and latent noise,
   enabling experiments where auxiliary metadata influences the super-resolution output.
 * **ESRGAN generator (`esrgan.py`).** Implements the RRDBNet trunk introduced with ESRGAN, exposing `n_blocks`, `growth_channels`,
-  and `res_scale` so you can dial in deeper receptive fields and sharper textures.
+  and `res_scale` so you can dial in deeper receptive fields and sharper textures. The upsampling path keeps PixelShuffle and can
+  use ICNR initialization (`Generator.use_icnr`, enabled by default) to reduce checkerboard artifacts. ESRGAN conv layers also use
+  a small-gain initialization by default for smoother early training.
 * **Advanced variants (`SRGAN_advanced.py`).** Provides additional block implementations and compatibility aliases exposed in
   `__init__.py` for backwards compatibility.
 

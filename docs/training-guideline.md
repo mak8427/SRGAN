@@ -49,6 +49,13 @@ The schedulers now expose a `cooldown` period and `min_lr` floor. Cooldown waits
 
 Both optimisers use a two-time-scale update rule (TTUR) so the discriminator defaults to a slower learning rate than the generator. The bundled Adam configuration mirrors popular GAN recipes with betas set to `(0.0, 0.99)` and `eps=1e-7`, ensuring the generator reacts quickly to discriminator feedback without building up stale momentum. Weight decay is automatically restricted to convolutional and dense kernels—normalisation layers and biases are excluded—so regularisation never interferes with running statistics. Finally, `gradient_clip_val` applies global norm clipping when set above zero; values between `0.5` and `1.0` work well when discriminator spikes cause unstable updates.
 
+#### ESRGAN checkerboard mitigation (10m defaults)
+
+If you observe faint checkerboard textures, especially in flat/low-frequency areas, start with:
+- `Generator.use_icnr: True` to initialise PixelShuffle pre-convolutions with ICNR.
+- `Optimizers.optim_d_lr <= 0.5 * optim_g_lr` to keep discriminator pressure in check.
+- `Training.Losses.fixed_idx: [0, 1, 2]` for 4-band inputs so VGG perceptual loss uses RGB consistently.
+
 #### Final stages of the Training
 With further progression of the training, it is important not only to monitor the absolute reconstruction quality of the generator, but also to keep an eye on the balance between the generator and discriminator. Ideally, we try to reach the Nash equilibrium, where the discriminator can not distinguish between real and synthetic anymore, meaning the super-resolution is (at least fdor the discriminator) indistinguishable from the real high-resolution image. This equilibrium is achieved when both $D(y)$ and $D(G(x))$ approach `0.5`.
 ![adv1](assets/discr_y_prob.png)  

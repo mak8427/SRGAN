@@ -101,6 +101,7 @@ def test_conditional_alias_points_to_stochastic_generator():
                 "n_blocks": 23,
                 "scaling_factor": 4,
                 "growth_channels": 32,
+                "use_icnr": True,
             },
             ESRGANGenerator,
         ),

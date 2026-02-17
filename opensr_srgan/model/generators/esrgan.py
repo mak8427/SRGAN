@@ -95,6 +95,7 @@ class ESRGANGenerator(nn.Module):
         growth_channels: int = 32,
         res_scale: float = 0.2,
         scale: int = 4,
+        use_icnr: bool = True,
     ) -> None:
         super().__init__()
 
@@ -117,10 +118,27 @@ class ESRGANGenerator(nn.Module):
         self.conv_first = nn.Conv2d(in_channels, n_features, 3, padding=1)
         self.body = nn.Sequential(*body_blocks)
         self.conv_body = nn.Conv2d(n_features, n_features, 3, padding=1)
-        self.upsampler = nn.Identity() if scale == 1 else make_upsampler(n_features, scale)
+        self.upsampler = (
+            nn.Identity()
+            if scale == 1
+            else make_upsampler(n_features, scale, use_icnr=use_icnr)
+        )
         self.conv_hr = nn.Conv2d(n_features, n_features, 3, padding=1)
         self.activation = nn.LeakyReLU(0.2, inplace=True)
         self.conv_last = nn.Conv2d(n_features, out_channels, 3, padding=1)
+        self._init_esrgan_weights()
+
+    def _init_esrgan_weights(self) -> None:
+        """Apply ESRGAN-style small initialization for stable early training."""
+        for module in self.modules():
+            if isinstance(module, nn.Conv2d):
+                # ICNR-upsample convs are already initialized in make_upsampler.
+                if module in self.upsampler.modules():
+                    continue
+                nn.init.kaiming_normal_(module.weight, a=0.2, mode="fan_in", nonlinearity="leaky_relu")
+                module.weight.data.mul_(0.1)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
 
     def forward(self, x: Tensor) -> Tensor:
         """

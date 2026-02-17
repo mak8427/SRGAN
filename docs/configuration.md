@@ -114,6 +114,7 @@ stable validation imagery. The EMA is fully optional and controlled through the 
 | `sam_weight` | `0.05` | Weight of the spectral angle mapper loss. |
 | `perceptual_weight` | `0.1` | Weight of the perceptual feature loss. |
 | `perceptual_metric` | `vgg` | Backbone used for perceptual features (`vgg` or `lpips`). |
+| `fixed_idx` | unset | Optional fixed 3-band indices used by perceptual loss when `in_bands > 3` (recommended: `[0, 1, 2]` for RGB+NIR setups). |
 | `tv_weight` | `0.0` | Total variation regularisation strength. |
 | `max_val` | `1.0` | Peak value assumed by PSNR/SSIM computations. |
 | `ssim_win` | `11` | Window size for SSIM metrics. Must be an odd integer. |
@@ -132,6 +133,7 @@ stable validation imagery. The EMA is fully optional and controlled through the 
 | `growth_channels` | `32` | ESRGAN-only: growth channels inside each RRDB block. |
 | `res_scale` | `0.2` | Residual scaling used by stochastic/ESRGAN variants. |
 | `out_channels` | `Model.in_bands` | ESRGAN-only: override the number of output bands. |
+| `use_icnr` | `True` | ESRGAN-only: apply ICNR initialization to pre-PixelShuffle convolutions to reduce checkerboard artifacts in low-frequency regions. |
 
 ## Discriminator
 
@@ -198,6 +200,9 @@ The trainer instantiates independent Adam optimisers for the generator and discr
 | `gradient_clip_val` | `0.0` | Global gradient-norm clipping threshold applied to both optimisers (set to `0` to disable). |
 
 Weight decay exclusions are handled automatically: batch/instance/group-norm layers and bias parameters are filtered into a no-decay group so regularisation only touches convolutional kernels and dense weights. This mirrors best practices for GAN training and keeps normalisation statistics stable.
+
+For ESRGAN runs on multispectral datasets, a practical stability baseline is:
+`Generator.use_icnr: true`, `Training.Losses.fixed_idx: [0, 1, 2]`, and `optim_d_lr <= 0.5 * optim_g_lr`.
 
 ## Schedulers
 
