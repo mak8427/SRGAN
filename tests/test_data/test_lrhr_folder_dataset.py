@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -14,26 +15,35 @@ def _write_pair(root: Path, phase: str, name: str, lr_shape=(8, 8, 3), hr_shape=
     np.save(root / phase / "HR" / name, np.ones(hr_shape, dtype=np.float32))
 
 
+def _make_config(root: Path, normalization="identity"):
+    return SimpleNamespace(
+        Data=SimpleNamespace(
+            dataset_type="LRHRFolderDataset",
+            root_dir=str(root),
+            normalization=normalization,
+        )
+    )
+
+
 def test_lrhr_folder_dataset_reads_phase_pairs(tmp_path):
     _write_pair(tmp_path, "train", "a.npy")
     _write_pair(tmp_path, "train", "b.npy")
     _write_pair(tmp_path, "val", "v.npy")
     _write_pair(tmp_path, "test", "t.npy")
 
-    ds = LRHRFolderDataset(root_folder=tmp_path, phase="train")
+    ds = LRHRFolderDataset(config=_make_config(tmp_path), phase="train")
     assert len(ds) == 2
 
-    sample = ds[0]
-    assert set(sample.keys()) == {"LR", "HR", "filename"}
-    assert isinstance(sample["LR"], torch.Tensor)
-    assert isinstance(sample["HR"], torch.Tensor)
-    assert sample["LR"].shape == (3, 8, 8)
-    assert sample["HR"].shape == (3, 16, 16)
+    lr, hr = ds[0]
+    assert isinstance(lr, torch.Tensor)
+    assert isinstance(hr, torch.Tensor)
+    assert lr.shape == (3, 8, 8)
+    assert hr.shape == (3, 16, 16)
 
 
 def test_lrhr_folder_dataset_invalid_phase_raises(tmp_path):
     with pytest.raises(ValueError):
-        LRHRFolderDataset(root_folder=tmp_path, phase="dev")
+        LRHRFolderDataset(config=_make_config(tmp_path), phase="dev")
 
 
 def test_lrhr_folder_dataset_missing_pair_raises(tmp_path):
@@ -42,7 +52,7 @@ def test_lrhr_folder_dataset_missing_pair_raises(tmp_path):
     np.save(tmp_path / "train" / "LR" / "only_lr.npy", np.zeros((8, 8, 1), dtype=np.float32))
 
     with pytest.raises(FileNotFoundError):
-        LRHRFolderDataset(root_folder=tmp_path, phase="train")
+        LRHRFolderDataset(config=_make_config(tmp_path), phase="train")
 
 
 def test_lrhr_folder_dataset_applies_normalization(tmp_path):
@@ -57,12 +67,22 @@ def test_lrhr_folder_dataset_applies_normalization(tmp_path):
         np.full((8, 8, 1), 10000.0, dtype=np.float32),
     )
 
-    ds = LRHRFolderDataset(
-        root_folder=tmp_path,
-        phase="train",
-        normalization="normalise_10k",
-    )
-    sample = ds[0]
+    ds = LRHRFolderDataset(config=_make_config(tmp_path, "normalise_10k"), phase="train")
+    lr, hr = ds[0]
 
-    assert torch.allclose(sample["LR"], torch.ones_like(sample["LR"]))
-    assert torch.allclose(sample["HR"], torch.ones_like(sample["HR"]))
+    assert torch.allclose(lr, torch.ones_like(lr))
+    assert torch.allclose(hr, torch.ones_like(hr))
+
+
+def test_lrhr_folder_dataset_rejects_wrong_dataset_type(tmp_path):
+    _write_pair(tmp_path, "train", "a.npy")
+    bad_cfg = SimpleNamespace(
+        Data=SimpleNamespace(
+            dataset_type="ExampleDataset",
+            root_dir=str(tmp_path),
+            normalization="identity",
+        )
+    )
+
+    with pytest.raises(ValueError):
+        LRHRFolderDataset(config=bad_cfg, phase="train")

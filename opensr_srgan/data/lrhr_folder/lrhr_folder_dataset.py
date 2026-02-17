@@ -35,7 +35,7 @@ class LRHRFolderDataset(Dataset):
     - Files are paired by exact filename between ``LR`` and ``HR``.
     - Every LR file in the selected phase must have a matching HR file.
     - Returned sample format is:
-      ``{"LR": torch.Tensor, "HR": torch.Tensor, "filename": str}``.
+      ``(lr: torch.Tensor, hr: torch.Tensor)``.
     - Optional ``normalization`` accepts the same values used in the project
       config (e.g. ``normalise_10k``, ``normalise_10k_signed``,
       ``normalise_s2``, ``sen2_stretch``, ``zero_one_signed``).
@@ -43,13 +43,57 @@ class LRHRFolderDataset(Dataset):
 
     VALID_PHASES = {"train", "val", "test"}
 
-    def __init__(self, root_folder, phase="train", normalization="identity"):
-        self.root_folder = Path(root_folder)
-        self.phase = phase
-        self.normalization = normalization
+    def __init__(self, config=None, phase="train", root_folder=None, normalization=None):
+        """Create an LR/HR folder dataset from project config.
 
-        cfg = SimpleNamespace(Data=SimpleNamespace(normalization=self.normalization))
-        self.normalizer = Normalizer(cfg)
+        Preferred usage passes the full ``config`` object and lets the dataset
+        resolve its own settings from ``config.Data``:
+        - ``dataset_type`` (for validation/traceability)
+        - ``root_dir`` (fallback: ``dataset_root``)
+        - ``normalization`` (string/mapping consumed by ``Normalizer``)
+
+        Legacy direct arguments (``root_folder`` / ``normalization``) remain
+        supported for backwards compatibility in tests and standalone usage.
+        """
+        data_cfg = getattr(config, "Data", None)
+        if data_cfg is not None:
+            cfg_dataset_type = getattr(data_cfg, "dataset_type", None)
+            cfg_root_folder = getattr(data_cfg, "root_dir", None)
+            if cfg_root_folder is None:
+                cfg_root_folder = getattr(data_cfg, "dataset_root", None)
+            cfg_normalization = getattr(data_cfg, "normalization", None)
+        else:
+            cfg_dataset_type = None
+            cfg_root_folder = None
+            cfg_normalization = None
+
+        self.dataset_type = cfg_dataset_type
+        if self.dataset_type is not None and self.dataset_type != "LRHRFolderDataset":
+            raise ValueError(
+                "LRHRFolderDataset received a config with "
+                f"Data.dataset_type='{self.dataset_type}'. Expected 'LRHRFolderDataset'."
+            )
+        resolved_root_folder = cfg_root_folder if cfg_root_folder is not None else root_folder
+        if resolved_root_folder is None:
+            raise ValueError(
+                "LRHRFolderDataset requires Data.root_dir (or legacy Data.dataset_root) "
+                "in config, or an explicit root_folder argument."
+            )
+
+        self.root_folder = Path(resolved_root_folder)
+        self.phase = phase
+        self.normalization = (
+            cfg_normalization if cfg_normalization is not None else normalization
+        )
+        if self.normalization is None:
+            self.normalization = "identity"
+
+        normalizer_config = config
+        if normalizer_config is None:
+            normalizer_config = SimpleNamespace(
+                Data=SimpleNamespace(normalization=self.normalization)
+            )
+        self.normalizer = Normalizer(normalizer_config)
 
         if phase not in self.VALID_PHASES:
             raise ValueError(
@@ -121,8 +165,8 @@ class LRHRFolderDataset(Dataset):
         lr = self.normalizer.normalize(lr)
         hr = self.normalizer.normalize(hr)
 
-        return {
-            "LR": lr,
-            "HR": hr,
-            "filename": lr_path.name,
-        }
+        return (lr,hr)
+
+
+if __name__ == "__main__":
+    ds = LRHRFolderDataset(config=None, phase="train", root_folder="/path/to/dataset")
