@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -13,14 +13,29 @@ from opensr_srgan.data.utils.normalizer import Normalizer
 class SEN2NAIP(torch.utils.data.Dataset):
     """SEN2NAIP cross-sensor dataset loader backed by a Taco manifest."""
 
-    def __init__(
-        self,
-        taco_file: str,
-        phase: str = "train",
-        val_fraction: float = 0.1,
-        cfg: Any = None,
-        normalization: str = "identity",
-    ):
+    def __init__(self, config: Any, phase=None, taco_file=None):
+        if config is None:
+            raise ValueError("SEN2NAIP requires a config object.")
+
+        if isinstance(config, (str, Path)):
+            from omegaconf import OmegaConf
+
+            config = OmegaConf.load(config)
+
+        data_cfg = getattr(config, "Data", None)
+        if data_cfg is None:
+            raise ValueError("SEN2NAIP requires config.Data.")
+
+        if taco_file is None:
+            taco_file = getattr(
+                data_cfg, "sen2naip_taco_file", DEFAULT_SEN2NAIP_TACO_FILE
+            )
+        if phase is None:
+            phase = getattr(data_cfg, "sen2naip_phase", "train")
+        val_fraction = getattr(data_cfg, "sen2naip_val_fraction", 0.1)
+
+        if not taco_file:
+            raise ValueError("SEN2NAIP requires config.Data.sen2naip_taco_file.")
         if phase not in {"train", "val"}:
             raise ValueError(f"Unknown phase '{phase}'. Expected one of: train, val.")
         if not (0.0 < val_fraction < 1.0):
@@ -37,9 +52,7 @@ class SEN2NAIP(torch.utils.data.Dataset):
             ) from exc
 
         self.dataset = tacoreader.load(taco_file)
-        if cfg is None:
-            cfg = SimpleNamespace(Data=SimpleNamespace(normalization=normalization))
-        self.normalizer = Normalizer(cfg)
+        self.normalizer = Normalizer(config)
 
         total = len(self.dataset)
         if total < 2:
@@ -83,8 +96,9 @@ class SEN2NAIP(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
+    DEFAULT_SEN2NAIP_TACO_FILE = "/data1/datasets/SEN2NAIP/sen2naipv2-crosssensor.taco"
     ds = SEN2NAIP(
-        "/data1/datasets/SEN2NAIP/sen2naipv2-crosssensor.taco",
+        config="opensr_srgan/configs/config_10m.yaml",
         phase="train",
-        normalization="identity",
+        taco_file=DEFAULT_SEN2NAIP_TACO_FILE,
     )

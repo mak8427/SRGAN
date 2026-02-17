@@ -842,7 +842,6 @@ class SRGAN_model(pl.LightningModule):
             threshold_mode="rel",
             cooldown=int(getattr(cfg_sch, "cooldown", 0)),
             min_lr=float(getattr(cfg_sch, "min_lr", 1e-7)),
-            verbose=bool(getattr(cfg_sch, "verbose", False)),
         )
         # D can have its own factor/patience; fall back to G’s if not set
         sched_kwargs_d = dict(sched_kwargs)

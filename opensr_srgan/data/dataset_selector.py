@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 LRHR_FOLDER_DATASET_ROOT = "data/"
+SEN2NAIP_TACO_FILE = "/data1/datasets/SEN2NAIP/sen2naipv2-crosssensor.taco"
 
 
 def select_dataset(config):
@@ -44,28 +45,8 @@ def select_dataset(config):
     elif str(dataset_selection).lower() == "sen2naip":
         from opensr_srgan.data.sen2naip.sen2naip_dataset import SEN2NAIP
 
-        taco_file = getattr(
-            config.Data, "sen2naip_taco_file", getattr(config.Data, "taco_file", None)
-        )
-        if not taco_file:
-            raise ValueError(
-                "Data.sen2naip_taco_file is required when Data.dataset_type='sen2naip'."
-            )
-
-        val_fraction = getattr(config.Data, "sen2naip_val_fraction", 0.1)
-
-        ds_train = SEN2NAIP(
-            taco_file=taco_file,
-            phase="train",
-            val_fraction=val_fraction,
-            cfg=config,
-        )
-        ds_val = SEN2NAIP(
-            taco_file=taco_file,
-            phase="val",
-            val_fraction=val_fraction,
-            cfg=config,
-        )
+        ds_train = SEN2NAIP(config=config, phase="train", taco_file=SEN2NAIP_TACO_FILE)
+        ds_val = SEN2NAIP(config=config, phase="val", taco_file=SEN2NAIP_TACO_FILE)
         
     elif dataset_selection == "LRHRFolderDataset":
         from opensr_srgan.data.lrhr_folder.lrhr_folder_dataset import LRHRFolderDataset

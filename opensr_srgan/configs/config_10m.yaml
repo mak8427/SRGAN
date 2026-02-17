@@ -17,7 +17,7 @@ Data:
   prefetch_factor: 2          # Samples prefetched per worker (2 is stable default)
 
   # Dataset configuration
-  dataset_type: 'SISR_WW'       # Choose dataset type: ['cv', 'SPOT6', 'S2_6b', 'SISR_WW']
+  dataset_type: 'SEN2NAIP'       # Choose dataset type: ['cv', 'SPOT6', 'S2_6b', 'SISR_WW']
   normalization: 'normalise_10k' # Normalization strategy for data processing
 
 
@@ -36,7 +36,7 @@ Model:
 Training:
   # --- Hardware Setup
   device: "cuda"                # Runtime device backend: ['cuda', 'cpu']
-  gpus: [2,3]                    # Number of GPUs to use, individually in list form, e.g. [0] or [0,2]
+  gpus: [0,1]                    # Number of GPUs to use, individually in list form, e.g. [0] or [0,2]
   # --- General Training Setup
   max_epochs: 9999            # Maximum number of training epochs
   val_check_interval: 0.25     # Validate at x percent of epoch (float) or every N steps (int)
@@ -78,7 +78,7 @@ Training:
 # ---------------------------------------------------------------------------- #
 # See Docs for archtecture details and suggestions
 Generator:
-  model_type: 'SRResNet'       # Generator family: ['SRResNet', 'stochastic_gan', 'esrgan']
+  model_type: 'esrgan'       # Generator family: ['SRResNet', 'stochastic_gan', 'esrgan']
   block_type: 'rrdb'           # SRResNet block variant: ['standard', 'res', 'rcab', 'rrdb', 'lka']
   large_kernel_size: 9         # Kernel for head and tail conv layers (SRResNet/stochastic)
   small_kernel_size: 3         # Kernel for intermediate blocks (SRResNet/stochastic)
@@ -89,7 +89,7 @@ Generator:
   res_scale: 0.2               # Residual scaling used by stochastic/ESRGAN variants
 
 Discriminator:
-  model_type: 'standard'       # Discriminator architecture selector ['standard', 'patchgan', 'esrgan']
+  model_type: 'esrgan'       # Discriminator architecture selector ['standard', 'patchgan', 'esrgan']
   n_blocks: 8                  # Convolutional depth for SRGAN/PatchGAN (ignored by ESRGAN)
   use_spectral_norm: False      # Apply spectral normalization to SRGAN discriminator layers for stability
   base_channels: 64            # ESRGAN discriminator base feature width (ignored otherwise)
@@ -101,7 +101,7 @@ Discriminator:
 Optimizers:
   optim_g_lr: 1e-4             # Learning rate for Generator
   optim_d_lr: 1e-6             # Learning rate for Discriminator
-  gradient_clip_val: 1.0        # Gradient clipping value (0 disables clipping)
+  gradient_clip_val: 0        # Gradient clipping value (0 disables clipping)
   betas: [0.0, 0.99]          # optional
   eps: 1.0e-7                 # optional
   weight_decay_g: 0.0         # optional
