@@ -44,7 +44,7 @@ Training:
   
   # --- Pretraining and adversarial setup ---
   pretrain_g_only: True        # Train generator only for initial phase
-  g_pretrain_steps: 5000      # Number of generator-only warmup steps
+  g_pretrain_steps: 50000      # Number of generator-only warmup steps
   adv_loss_ramp_steps: 1000    # Gradual adversarial weight ramp steps
   label_smoothing: True        # Discriminator target smoothing (1.0 → 0.9)
 
@@ -101,8 +101,8 @@ Discriminator:
 # 🧮 OPTIMIZATION SETTINGS
 # ---------------------------------------------------------------------------- #
 Optimizers:
-  optim_g_lr: 1e-4             # Learning rate for Generator
-  optim_d_lr: 5e-5             # Learning rate for Discriminator (TTUR: slower than generator)
+  optim_g_lr: 1e-3             # Learning rate for Generator
+  optim_d_lr: 5e-3             # Learning rate for Discriminator (TTUR: slower than generator)
   gradient_clip_val: 0        # Gradient clipping value (0 disables clipping)
   betas: [0.0, 0.99]          # optional
   eps: 1.0e-7                 # optional
@@ -113,8 +113,8 @@ Optimizers:
 # 📉 SCHEDULERS AND EARLY STOPPING
 # ---------------------------------------------------------------------------- #
 Schedulers:
-  g_warmup_steps: 1000        # Generator warmup LR curve duration in steps (0 disables warmup)
-  g_warmup_type: 'cosine'      # Generator warmup curve: ['cosine', 'linear']
+  g_warmup_steps: 500        # Generator warmup LR curve duration in steps (0 disables warmup)
+  g_warmup_type: 'linear'      # Generator warmup curve: ['cosine', 'linear']
   metric_g: 'val_metrics/l1'     # Metric monitored for Generator LR scheduler
   metric_d: 'discriminator/adversarial_loss'     # Metric monitored for Discriminator LR scheduler
   patience_g: 10              # Patience (epochs) for Generator LR scheduler

@@ -765,16 +765,21 @@ class SRGAN_model(pl.LightningModule):
         warmup_steps = int(getattr(cfg_sch, "g_warmup_steps", 0))
         warmup_type = str(getattr(cfg_sch, "g_warmup_type", "none")).lower()
         if warmup_steps > 0 and warmup_type in {"linear", "cosine"}:
+            cfg_g_lr = float(getattr(cfg_opt, "optim_g_lr", 1e-4))
+            min_warmup_lr = 0.05 * cfg_g_lr
 
             def _g_warmup_lambda(step: int) -> float:
                 if step >= warmup_steps:
                     return 1.0
                 t = (step + 1) / max(1, warmup_steps)
-                return (
+                raw = (
                     t
                     if warmup_type == "linear"
                     else 0.5 * (1.0 - math.cos(math.pi * t))
                 )
+                # Clamp using an LR floor derived from configured generator LR.
+                target_lr = max(raw * cfg_g_lr, min_warmup_lr)
+                return target_lr / cfg_g_lr
 
             warmup_g = torch.optim.lr_scheduler.LambdaLR(
                 optimizer_g, lr_lambda=_g_warmup_lambda
