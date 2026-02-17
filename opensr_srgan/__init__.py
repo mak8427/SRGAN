@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from typing import TYPE_CHECKING, Any
 
 try:  # pragma: no cover - import shim for Python <3.8
@@ -21,6 +22,19 @@ try:  # pragma: no cover - depends on installation metadata
     __version__ = _pkg_version("opensr-srgan")
 except PackageNotFoundError:  # pragma: no cover - local source tree fallback
     __version__ = "0.0.0"
+
+
+def _silence_known_lightning_deprecations() -> None:
+    """Suppress noisy third-party deprecations we cannot patch locally."""
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*isinstance\(treespec,\s*LeafSpec\)\s*is deprecated.*",
+        category=DeprecationWarning,
+        module=r"pytorch_lightning\.utilities\._pytree",
+    )
+
+
+_silence_known_lightning_deprecations()
 
 if TYPE_CHECKING:  # pragma: no cover - type checkers only
     from .model.SRGAN import SRGAN_model as SRGANModel
