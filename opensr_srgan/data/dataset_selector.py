@@ -154,6 +154,36 @@ def select_dataset(config):
             normalizer=normalizer,
         )
         
+    elif dataset_selection == "LRHRFolderDataset":
+        from opensr_srgan.data.lrhr_folder.lrhr_folder_dataset import LRHRFolderDataset
+
+        path = getattr(config.Data, "dataset_root", "data/")
+        normalization = getattr(config.Data, "normalization", "identity")
+        ds_train_raw = LRHRFolderDataset(
+            root_folder=path,
+            phase="train",
+            normalization=normalization,
+        )
+        ds_val_raw = LRHRFolderDataset(
+            root_folder=path,
+            phase="val",
+            normalization=normalization,
+        )
+
+        # Keep training loop compatibility: model expects (lr, hr) tuples.
+        class _TupleAdapter:
+            def __init__(self, dataset):
+                self.dataset = dataset
+
+            def __len__(self):
+                return len(self.dataset)
+
+            def __getitem__(self, idx):
+                sample = self.dataset[idx]
+                return sample["LR"], sample["HR"]
+
+        ds_train = _TupleAdapter(ds_train_raw)
+        ds_val = _TupleAdapter(ds_val_raw)
 
     else:
         # Centralized error so unsupported keys fail loudly & clearly.
