@@ -126,39 +126,11 @@ def test_select_dataset_unknown_raises():
     assert "does-not-exist" in str(exc.value)
 
 
-class _StubLegacyDataset(Dataset):
-    created_kwargs = []
-
-    def __init__(self, **kwargs):
-        self.__class__.created_kwargs.append(kwargs)
-        self._data = torch.arange(4, dtype=torch.float32)
-
-    def __len__(self):
-        return len(self._data)
-
-    def __getitem__(self, idx):
-        return self._data[idx]
-
-
-class _StubWorldWideDataset(Dataset):
-    created_kwargs = []
-
-    def __init__(self, **kwargs):
-        self.__class__.created_kwargs.append(kwargs)
-        self._data = torch.arange(5, dtype=torch.float32)
-
-    def __len__(self):
-        return len(self._data)
-
-    def __getitem__(self, idx):
-        return self._data[idx]
-
-
 class _StubLRHRFolderDataset(Dataset):
     created_args = []
 
-    def __init__(self, root_folder, phase, **kwargs):
-        self.__class__.created_args.append((root_folder, phase, kwargs))
+    def __init__(self, config, phase, **kwargs):
+        self.__class__.created_args.append((config, phase, kwargs))
         self._data = torch.arange(3, dtype=torch.float32)
 
     def __len__(self):
@@ -166,7 +138,7 @@ class _StubLRHRFolderDataset(Dataset):
 
     def __getitem__(self, idx):
         value = self._data[idx]
-        return {"LR": value, "HR": value + 1, "filename": f"{idx}.npy"}
+        return value, value + 1
 
 
 def _install_module(monkeypatch, name, is_package=False, **attrs):
@@ -179,98 +151,14 @@ def _install_module(monkeypatch, name, is_package=False, **attrs):
     return module
 
 
-def test_select_dataset_s2_6b_branch(monkeypatch):
-    _StubLegacyDataset.created_kwargs.clear()
-    _install_module(monkeypatch, "opensr_srgan.data.SEN2_SAFE", is_package=True)
-    _install_module(
-        monkeypatch,
-        "opensr_srgan.data.SEN2_SAFE.S2_6b_ds",
-        S2SAFEDataset=_StubLegacyDataset,
-    )
-
-    config = _make_config(
-        dataset_type="S2_6b",
-        train_batch_size=2,
-        val_batch_size=2,
-        num_workers=0,
-    )
-    config.Generator.scaling_factor = 8
-
-    datamodule = dataset_selector.select_dataset(config)
-    train_loader = datamodule.train_dataloader()
-    val_loader = datamodule.val_dataloader()
-
-    assert len(_StubLegacyDataset.created_kwargs) == 2
-    assert _StubLegacyDataset.created_kwargs[0]["phase"] == "train"
-    assert _StubLegacyDataset.created_kwargs[1]["phase"] == "val"
-    assert _StubLegacyDataset.created_kwargs[0]["sr_factor"] == 8
-    assert _StubLegacyDataset.created_kwargs[0]["bands_keep"] == [
-        "B05_20m",
-        "B06_20m",
-        "B07_20m",
-        "B8A_20m",
-        "B11_20m",
-        "B12_20m",
-    ]
-    assert train_loader.batch_size == 2
-    assert val_loader.batch_size == 2
+@pytest.mark.parametrize("dataset_type", ["S2_6b", "S2_4b", "SISR_WW"])
+def test_select_dataset_legacy_types_raise(dataset_type):
+    config = _make_config(dataset_type=dataset_type, num_workers=0)
+    with pytest.raises(NotImplementedError):
+        dataset_selector.select_dataset(config)
 
 
-def test_select_dataset_s2_4b_branch(monkeypatch):
-    _StubLegacyDataset.created_kwargs.clear()
-    _install_module(monkeypatch, "opensr_srgan.data.SEN2_SAFE", is_package=True)
-    _install_module(
-        monkeypatch,
-        "opensr_srgan.data.SEN2_SAFE.S2_6b_ds",
-        S2SAFEDataset=_StubLegacyDataset,
-    )
-
-    config = _make_config(
-        dataset_type="S2_4b",
-        train_batch_size=1,
-        val_batch_size=3,
-        num_workers=0,
-    )
-
-    datamodule = dataset_selector.select_dataset(config)
-    _ = datamodule.train_dataloader()
-    _ = datamodule.val_dataloader()
-
-    assert len(_StubLegacyDataset.created_kwargs) == 2
-    assert _StubLegacyDataset.created_kwargs[0]["bands_keep"] == [
-        "B05_10m",
-        "B04_10m",
-        "B03_10m",
-        "B02_10m",
-    ]
-
-
-def test_select_dataset_sisr_ww_branch(monkeypatch):
-    _StubWorldWideDataset.created_kwargs.clear()
-    _install_module(monkeypatch, "opensr_srgan.data.SISR_WW", is_package=True)
-    _install_module(
-        monkeypatch,
-        "opensr_srgan.data.SISR_WW.SISR_WW_dataset",
-        SISRWorldWide=_StubWorldWideDataset,
-    )
-
-    config = _make_config(
-        dataset_type="SISR_WW",
-        train_batch_size=2,
-        val_batch_size=2,
-        num_workers=0,
-    )
-
-    datamodule = dataset_selector.select_dataset(config)
-    _ = datamodule.train_dataloader()
-    _ = datamodule.val_dataloader()
-
-    assert len(_StubWorldWideDataset.created_kwargs) == 2
-    assert _StubWorldWideDataset.created_kwargs[0]["split"] == "train"
-    assert _StubWorldWideDataset.created_kwargs[1]["split"] == "val"
-
-
-def test_select_dataset_lrhr_folder_branch(monkeypatch):
+def test_select_dataset_lrhr_folder_branch(monkeypatch, tmp_path):
     _StubLRHRFolderDataset.created_args.clear()
     _install_module(monkeypatch, "opensr_srgan.data.lrhr_folder", is_package=True)
     _install_module(
@@ -279,9 +167,11 @@ def test_select_dataset_lrhr_folder_branch(monkeypatch):
         LRHRFolderDataset=_StubLRHRFolderDataset,
     )
 
+    monkeypatch.setattr(dataset_selector, "LRHR_FOLDER_DATASET_ROOT", str(tmp_path))
+
     config = _make_config(
         dataset_type="LRHRFolderDataset",
-        dataset_root="/tmp/my_dataset_root",
+        normalization="identity",
         train_batch_size=2,
         val_batch_size=2,
         num_workers=0,
@@ -291,12 +181,31 @@ def test_select_dataset_lrhr_folder_branch(monkeypatch):
     train_loader = datamodule.train_dataloader()
     train_batch = next(iter(train_loader))
 
-    assert _StubLRHRFolderDataset.created_args == [
-        ("/tmp/my_dataset_root", "train", {"normalization": "identity"}),
-        ("/tmp/my_dataset_root", "val", {"normalization": "identity"}),
-    ]
+    assert len(_StubLRHRFolderDataset.created_args) == 2
+    assert _StubLRHRFolderDataset.created_args[0][1] == "train"
+    assert _StubLRHRFolderDataset.created_args[1][1] == "val"
+    assert _StubLRHRFolderDataset.created_args[0][2]["root_folder"] == tmp_path
+    assert _StubLRHRFolderDataset.created_args[1][2]["root_folder"] == tmp_path
+    assert _StubLRHRFolderDataset.created_args[0][0] is config
+    assert _StubLRHRFolderDataset.created_args[1][0] is config
     assert isinstance(train_batch, (list, tuple))
     assert len(train_batch) == 2
+
+
+def test_select_dataset_lrhr_folder_branch_missing_root_raises(monkeypatch, tmp_path):
+    _install_module(monkeypatch, "opensr_srgan.data.lrhr_folder", is_package=True)
+    _install_module(
+        monkeypatch,
+        "opensr_srgan.data.lrhr_folder.lrhr_folder_dataset",
+        LRHRFolderDataset=_StubLRHRFolderDataset,
+    )
+    missing = tmp_path / "does_not_exist"
+    monkeypatch.setattr(dataset_selector, "LRHR_FOLDER_DATASET_ROOT", str(missing))
+
+    config = _make_config(dataset_type="LRHRFolderDataset", num_workers=0)
+
+    with pytest.raises(FileNotFoundError):
+        dataset_selector.select_dataset(config)
 
 
 def test_dataset_selector_module_main_guard(monkeypatch):

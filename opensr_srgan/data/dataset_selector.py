@@ -1,3 +1,9 @@
+from pathlib import Path
+
+
+LRHR_FOLDER_DATASET_ROOT = "data/"
+
+
 def select_dataset(config):
     """
     Build train/val datasets from `config` and wrap them into a LightningDataModule.
@@ -26,98 +32,7 @@ def select_dataset(config):
     # I dont want to delete them in case they are needed again.
     # Only the "ExampleDataset" is actively used in the current version.
 
-    if dataset_selection == "S2_6b":
-        print(f"WARNING -- {dataset_selection} currently not a public dataset!")
-        print("Adopt the config.yaml to use your own dataset.")
-        
-        # Import here to avoid import costs when other datasets are used elsewhere.
-        from .SEN2_SAFE.S2_6b_ds import S2SAFEDataset
-
-        # 6 × 20 m bands (B05, B06, B07, B8A, B11, B12) in a fixed order
-        desired_20m_order = [
-            "B05_20m",
-            "B06_20m",
-            "B07_20m",
-            "B8A_20m",
-            "B11_20m",
-            "B12_20m",
-        ]
-
-        # NOTE: This manifest path is hard-coded on purpose (per your snippet).
-        # Consider moving it into config later if you want to switch datasets easily.
-        ds_train = S2SAFEDataset(
-            phase="train",
-            manifest_json="/data3/S2_20m/s2_safe_manifest_20m.json",
-            group_by="granule",
-            group_regex=r".*?/GRANULE/([^/]+)/IMG_DATA/.*",
-            bands_keep=desired_20m_order,
-            band_order=desired_20m_order,
-            dtype="float32",
-            hr_size=(512, 512),
-            sr_factor=config.Generator.scaling_factor,
-            antialias=True,
-        )
-        ds_val = S2SAFEDataset(
-            phase="val",
-            manifest_json="/data3/S2_20m/s2_safe_manifest_20m.json",
-            group_by="granule",
-            group_regex=r".*?/GRANULE/([^/]+)/IMG_DATA/.*",
-            bands_keep=desired_20m_order,
-            band_order=desired_20m_order,
-            dtype="float32",
-            hr_size=(512, 512),
-            sr_factor=config.Generator.scaling_factor,
-            antialias=True,
-        )
-
-    elif dataset_selection == "S2_4b":
-        print(f"WARNING -- {dataset_selection} currently not a public dataset!")
-        print("Adopt the config.yaml to use your own dataset.")
-
-        # If there is a dedicated 4-band dataset file, swap the import accordingly.
-        from .SEN2_SAFE.S2_6b_ds import S2SAFEDataset
-
-        # 4 × 10 m bands (R, G, B, NIR) in a fixed order.
-        # FYI: The manifest path below still points to the 20 m manifest. If you truly
-        # use 10 m inputs here, you may want a 10 m manifest. Keeping as-is intentionally.
-        desired_20m_order = ["B05_10m", "B04_10m", "B03_10m", "B02_10m"]
-
-        ds_train = S2SAFEDataset(
-            phase="train",
-            manifest_json="/data3/S2_20m/s2_safe_manifest_20m.json",  # See FYI above.
-            group_by="granule",
-            group_regex=r".*?/GRANULE/([^/]+)/IMG_DATA/.*",
-            bands_keep=desired_20m_order,
-            band_order=desired_20m_order,
-            dtype="float32",
-            hr_size=(512, 512),
-            sr_factor=config.Generator.scaling_factor,
-            antialias=True,
-        )
-        ds_val = S2SAFEDataset(
-            phase="val",
-            manifest_json="/data3/S2_20m/s2_safe_manifest_20m.json",  # See FYI above.
-            group_by="granule",
-            group_regex=r".*?/GRANULE/([^/]+)/IMG_DATA/.*",
-            bands_keep=desired_20m_order,
-            band_order=desired_20m_order,
-            dtype="float32",
-            hr_size=(512, 512),
-            sr_factor=config.Generator.scaling_factor,
-            antialias=True,
-        )
-
-    # For internal testing only
-    elif dataset_selection == "SISR_WW":
-        print(f"WARNING -- {dataset_selection} currently not a public dataset!")
-        print("Adopt the config.yaml to use your own dataset.")
-        from .SISR_WW.SISR_WW_dataset import SISRWorldWide
-
-        path = "/data3/SEN2NAIP_global"
-        ds_train = SISRWorldWide(path=path, split="train")
-        ds_val = SISRWorldWide(path=path, split="val")
-
-    elif dataset_selection == "ExampleDataset":
+    if dataset_selection == "ExampleDataset":
         from opensr_srgan.data.example_data.example_dataset import ExampleDataset
         print("WARNING -- Using Example Dataset!")
         print("This dataset is exclusively meant for demonstration and debugging, not training or evaluation.")
@@ -129,33 +44,17 @@ def select_dataset(config):
     elif dataset_selection == "LRHRFolderDataset":
         from opensr_srgan.data.lrhr_folder.lrhr_folder_dataset import LRHRFolderDataset
 
-        path = getattr(config.Data, "dataset_root", "data/")
-        normalization = getattr(config.Data, "normalization", "identity")
-        ds_train_raw = LRHRFolderDataset(
-            root_folder=path,
-            phase="train",
-            normalization=normalization,
-        )
-        ds_val_raw = LRHRFolderDataset(
-            root_folder=path,
-            phase="val",
-            normalization=normalization,
-        )
+        path = Path(LRHR_FOLDER_DATASET_ROOT)
+        if not path.is_dir():
+            raise FileNotFoundError(
+                f"LRHRFolderDataset root path does not exist: '{path}'. "
+                "Set 'LRHR_FOLDER_DATASET_ROOT' in opensr_srgan/data/dataset_selector.py "
+                "to a valid dataset directory."
+            )
 
-        # Keep training loop compatibility: model expects (lr, hr) tuples.
-        class _TupleAdapter:
-            def __init__(self, dataset):
-                self.dataset = dataset
+        ds_train = LRHRFolderDataset(config=config, root_folder=path, phase="train")
+        ds_val = LRHRFolderDataset(config=config, root_folder=path, phase="val")
 
-            def __len__(self):
-                return len(self.dataset)
-
-            def __getitem__(self, idx):
-                sample = self.dataset[idx]
-                return sample["LR"], sample["HR"]
-
-        ds_train = _TupleAdapter(ds_train_raw)
-        ds_val = _TupleAdapter(ds_val_raw)
 
     else:
         # Centralized error so unsupported keys fail loudly & clearly.
