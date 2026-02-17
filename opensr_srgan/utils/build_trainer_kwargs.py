@@ -121,7 +121,7 @@ def build_lightning_kwargs(
         val_check_interval=config.Training.val_check_interval,
         limit_val_batches=config.Training.limit_val_batches,
         max_epochs=config.Training.max_epochs,
-        log_every_n_steps=100,
+        log_every_n_steps=50,
         logger=[logger],
         callbacks=[checkpoint_callback, early_stop_callback],
         gradient_clip_val=config.Optimizers.gradient_clip_val,
