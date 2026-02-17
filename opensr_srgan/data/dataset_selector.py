@@ -125,6 +125,34 @@ def select_dataset(config):
         path = "example_dataset/"
         ds_train = ExampleDataset(folder=path, phase="train")
         ds_val = ExampleDataset(folder=path, phase="val")
+
+    elif str(dataset_selection).lower() == "sen2naip":
+        from opensr_srgan.data.sen2naip.sen2naip_dataset import SEN2NAIP
+        from opensr_srgan.data.utils.normalizer import Normalizer
+
+        taco_file = getattr(
+            config.Data, "sen2naip_taco_file", getattr(config.Data, "taco_file", None)
+        )
+        if not taco_file:
+            raise ValueError(
+                "Data.sen2naip_taco_file is required when Data.dataset_type='sen2naip'."
+            )
+
+        val_fraction = getattr(config.Data, "sen2naip_val_fraction", 0.1)
+        normalizer = Normalizer(config).normalize
+
+        ds_train = SEN2NAIP(
+            taco_file=taco_file,
+            phase="train",
+            val_fraction=val_fraction,
+            normalizer=normalizer,
+        )
+        ds_val = SEN2NAIP(
+            taco_file=taco_file,
+            phase="val",
+            val_fraction=val_fraction,
+            normalizer=normalizer,
+        )
         
 
     else:

@@ -154,6 +154,21 @@ class _StubWorldWideDataset(Dataset):
         return self._data[idx]
 
 
+class _StubSEN2NAIPDataset(Dataset):
+    created_kwargs = []
+
+    def __init__(self, **kwargs):
+        self.__class__.created_kwargs.append(kwargs)
+        self._data = torch.arange(6, dtype=torch.float32)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __getitem__(self, idx):
+        value = self._data[idx]
+        return value.unsqueeze(0), value.unsqueeze(0)
+
+
 def _install_module(monkeypatch, name, is_package=False, **attrs):
     module = types.ModuleType(name)
     if is_package:
@@ -253,6 +268,49 @@ def test_select_dataset_sisr_ww_branch(monkeypatch):
     assert len(_StubWorldWideDataset.created_kwargs) == 2
     assert _StubWorldWideDataset.created_kwargs[0]["split"] == "train"
     assert _StubWorldWideDataset.created_kwargs[1]["split"] == "val"
+
+
+def test_select_dataset_sen2naip_branch_wires_normalizer(monkeypatch):
+    import opensr_srgan.data.utils.normalizer as normalizer_module
+
+    _StubSEN2NAIPDataset.created_kwargs.clear()
+    _install_module(monkeypatch, "opensr_srgan.data.sen2naip", is_package=True)
+    _install_module(
+        monkeypatch,
+        "opensr_srgan.data.sen2naip.sen2naip_dataset",
+        SEN2NAIP=_StubSEN2NAIPDataset,
+    )
+
+    class _NormalizerStub:
+        def __init__(self, _cfg):
+            pass
+
+        def normalize(self, tensor):
+            return tensor + 1
+
+    monkeypatch.setattr(normalizer_module, "Normalizer", _NormalizerStub)
+
+    config = _make_config(
+        dataset_type="sen2naip",
+        train_batch_size=2,
+        val_batch_size=2,
+        num_workers=0,
+        sen2naip_taco_file="dummy.taco",
+        sen2naip_val_fraction=0.25,
+    )
+
+    datamodule = dataset_selector.select_dataset(config)
+    _ = datamodule.train_dataloader()
+    _ = datamodule.val_dataloader()
+
+    assert len(_StubSEN2NAIPDataset.created_kwargs) == 2
+    train_kwargs = _StubSEN2NAIPDataset.created_kwargs[0]
+    val_kwargs = _StubSEN2NAIPDataset.created_kwargs[1]
+    assert train_kwargs["phase"] == "train"
+    assert val_kwargs["phase"] == "val"
+    assert train_kwargs["taco_file"] == "dummy.taco"
+    assert val_kwargs["val_fraction"] == 0.25
+    assert torch.equal(train_kwargs["normalizer"](torch.zeros(1)), torch.ones(1))
 
 
 def test_dataset_selector_module_main_guard(monkeypatch):
