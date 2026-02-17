@@ -278,8 +278,6 @@ def test_select_dataset_sisr_ww_branch(monkeypatch):
 
 
 def test_select_dataset_sen2naip_branch_wires_normalizer(monkeypatch):
-    import opensr_srgan.data.utils.normalizer as normalizer_module
-
     _StubSEN2NAIPDataset.created_kwargs.clear()
     _install_module(monkeypatch, "opensr_srgan.data.sen2naip", is_package=True)
     _install_module(
@@ -287,15 +285,6 @@ def test_select_dataset_sen2naip_branch_wires_normalizer(monkeypatch):
         "opensr_srgan.data.sen2naip.sen2naip_dataset",
         SEN2NAIP=_StubSEN2NAIPDataset,
     )
-
-    class _NormalizerStub:
-        def __init__(self, _cfg):
-            pass
-
-        def normalize(self, tensor):
-            return tensor + 1
-
-    monkeypatch.setattr(normalizer_module, "Normalizer", _NormalizerStub)
 
     config = _make_config(
         dataset_type="sen2naip",
@@ -317,7 +306,7 @@ def test_select_dataset_sen2naip_branch_wires_normalizer(monkeypatch):
     assert val_kwargs["phase"] == "val"
     assert train_kwargs["taco_file"] == "dummy.taco"
     assert val_kwargs["val_fraction"] == 0.25
-    assert torch.equal(train_kwargs["normalizer"](torch.zeros(1)), torch.ones(1))
+    assert train_kwargs["cfg"] is config
 def test_select_dataset_lrhr_folder_branch(monkeypatch):
     _StubLRHRFolderDataset.created_args.clear()
     _install_module(monkeypatch, "opensr_srgan.data.lrhr_folder", is_package=True)

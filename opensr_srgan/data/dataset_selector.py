@@ -128,7 +128,6 @@ def select_dataset(config):
 
     elif str(dataset_selection).lower() == "sen2naip":
         from opensr_srgan.data.sen2naip.sen2naip_dataset import SEN2NAIP
-        from opensr_srgan.data.utils.normalizer import Normalizer
 
         taco_file = getattr(
             config.Data, "sen2naip_taco_file", getattr(config.Data, "taco_file", None)
@@ -139,19 +138,18 @@ def select_dataset(config):
             )
 
         val_fraction = getattr(config.Data, "sen2naip_val_fraction", 0.1)
-        normalizer = Normalizer(config).normalize
 
         ds_train = SEN2NAIP(
             taco_file=taco_file,
             phase="train",
             val_fraction=val_fraction,
-            normalizer=normalizer,
+            cfg=config,
         )
         ds_val = SEN2NAIP(
             taco_file=taco_file,
             phase="val",
             val_fraction=val_fraction,
-            normalizer=normalizer,
+            cfg=config,
         )
         
     elif dataset_selection == "LRHRFolderDataset":

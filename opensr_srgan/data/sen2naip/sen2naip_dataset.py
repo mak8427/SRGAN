@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from typing import Callable, Optional
+from types import SimpleNamespace
+from typing import Any
 
 import numpy as np
 import rasterio as rio
 import torch
+
+from opensr_srgan.data.utils.normalizer import Normalizer
 
 
 class SEN2NAIP(torch.utils.data.Dataset):
@@ -15,7 +18,8 @@ class SEN2NAIP(torch.utils.data.Dataset):
         taco_file: str,
         phase: str = "train",
         val_fraction: float = 0.1,
-        normalizer: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
+        cfg: Any = None,
+        normalization: str = "identity",
     ):
         if phase not in {"train", "val"}:
             raise ValueError(f"Unknown phase '{phase}'. Expected one of: train, val.")
@@ -33,7 +37,9 @@ class SEN2NAIP(torch.utils.data.Dataset):
             ) from exc
 
         self.dataset = tacoreader.load(taco_file)
-        self.normalizer = normalizer
+        if cfg is None:
+            cfg = SimpleNamespace(Data=SimpleNamespace(normalization=normalization))
+        self.normalizer = Normalizer(cfg)
 
         total = len(self.dataset)
         if total < 2:
@@ -70,9 +76,8 @@ class SEN2NAIP(torch.utils.data.Dataset):
         lr = self._to_tensor(lr_data)
         hr = self._to_tensor(hr_data)
 
-        if self.normalizer is not None:
-            lr = self.normalizer(lr)
-            hr = self.normalizer(hr)
+        lr = self.normalizer.normalize(lr)
+        hr = self.normalizer.normalize(hr)
 
         return lr, hr
 
@@ -81,4 +86,5 @@ if __name__ == "__main__":
     ds = SEN2NAIP(
         "/data1/datasets/SEN2NAIP/sen2naipv2-crosssensor.taco",
         phase="train",
+        normalization="identity",
     )
