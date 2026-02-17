@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import importlib
+import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-import rasterio as rio
 import torch
 
 from opensr_srgan.data.utils.normalizer import Normalizer
@@ -27,9 +28,7 @@ class SEN2NAIP(torch.utils.data.Dataset):
             raise ValueError("SEN2NAIP requires config.Data.")
 
         if taco_file is None:
-            taco_file = getattr(
-                data_cfg, "sen2naip_taco_file", DEFAULT_SEN2NAIP_TACO_FILE
-            )
+            taco_file = getattr(data_cfg, "sen2naip_taco_file", None)
         if phase is None:
             phase = getattr(data_cfg, "sen2naip_phase", "train")
         val_fraction = getattr(data_cfg, "sen2naip_val_fraction", 0.1)
@@ -78,6 +77,10 @@ class SEN2NAIP(torch.utils.data.Dataset):
         return tensor
 
     def __getitem__(self, idx):
+        rio = sys.modules.get("rasterio")
+        if rio is None:
+            rio = importlib.import_module("rasterio")
+
         sample = self.dataset.read(self.indices[idx])
         lr_path = sample.read(0)
         hr_path = sample.read(1)
@@ -96,9 +99,8 @@ class SEN2NAIP(torch.utils.data.Dataset):
 
 
 if __name__ == "__main__":
-    DEFAULT_SEN2NAIP_TACO_FILE = "/data1/datasets/SEN2NAIP/sen2naipv2-crosssensor.taco"
     ds = SEN2NAIP(
         config="opensr_srgan/configs/config_10m.yaml",
         phase="train",
-        taco_file=DEFAULT_SEN2NAIP_TACO_FILE,
+        taco_file="/data1/datasets/SEN2NAIP/sen2naipv2-crosssensor.taco",
     )
