@@ -4,7 +4,7 @@ This section goes over the most important metrics and settings to achieve a bala
 
 
 ## Best Practices
-It is recommended to use the training warmups and schedulers as explained above. The following images present how these rpactices are reflected in the logs.
+It is recommended to use the training warmups and schedulers as explained above. The following images present how these practices are reflected in the logs.
 
 ### Objectives and loss composition
 
@@ -16,11 +16,11 @@ Each coefficient maps directly to the `Training.Losses` block in the configurati
 
 ### Exponential Moving Average (EMA)
 
-For smoother validation curves and more stable inference, the trainer can maintain an exponential moving average of the generator parameters. After each optimisation step, the EMA weights $\theta_{\text{EMA}}$ are updated toward the current generator state $\theta$:
+For smoother validation curves and more stable inference, the trainer can maintain an exponential moving average of the generator parameters. After each optimisation step, the EMA weights \(\theta_{\text{EMA}}\) are updated toward the current generator state \(\theta\):
 $$
 \theta_{\text{EMA}}^{(t)} = \beta \, \theta_{\text{EMA}}^{(t-1)} + (1 - \beta)\, \theta^{(t)},
 $$
-where the decay $\beta \in [0,1)$ controls how much history is retained. During validation and inference, the EMA snapshot replaces the live weights so that predictions are less sensitive to short-term oscillations. The final super-resolved output therefore comes from the smoothed generator,
+where the decay \(\beta \in [0,1)\) controls how much history is retained. During validation and inference, the EMA snapshot replaces the live weights so that predictions are less sensitive to short-term oscillations. The final super-resolved output therefore comes from the smoothed generator,
 $$
 \hat{y}_{\text{SR}} = G(x; \theta_{\text{EMA}}),
 $$
@@ -28,11 +28,11 @@ which empirically reduces adversarial artefacts and improves perceptual consiste
 
 
 #### Generator LR Warmup
-When starting to train, the learning rate slowly raises from 0 to the indicated value. This prevents exploding gradients after a random initialization of the weights when training the model from scratch. The length of the LR warmup is defined with the `Schedulers.g_warmup_steps` parameter in the config. Wether the increase is linear or more smooth is defined with the `Schedulers.g_warmup_type` setting, ideally this should be set to `cosine`.
+When starting to train, the learning rate slowly rises from 0 to the indicated value. This prevents exploding gradients after random initialization of the weights when training the model from scratch. The length of the LR warmup is defined with the `Schedulers.g_warmup_steps` parameter in the config. Whether the increase is linear or smoother is defined with the `Schedulers.g_warmup_type` setting; ideally this should be set to `cosine`.
 ![lr_gen_warmup](assets/lr_generator_warmup.png)  
 
 #### Generator Pre-training
-After the loss stabilizes, the generator continues to be trained while the discriminator sits idle. This prevents the discriminator form overpowering the generator in early stages of the training, where the generator output is easily identifyable as synthetic. The binary flag `training/pretrain_phase` is logged to indicate wether the model is still in pretraining or not. Wether the pretraining is enabled or not is defined with the `Training.pretrain_g_only` parameter in the config, the parameter `Training.g_pretrain_steps` defines how many steps this pretraining takes in total. The parameter `Training.g_warmup_steps` decides how many training steps (batches) this smooth LR increase takes, setting it to `0` turns it off.
+After the loss stabilizes, the generator continues to be trained while the discriminator sits idle. This prevents the discriminator from overpowering the generator in early training stages, where the generator output is still easily identifiable as synthetic. The binary flag `training/pretrain_phase` is logged to indicate whether the model is still in pretraining. Whether pretraining is enabled is defined with the `Training.pretrain_g_only` parameter in the config; `Training.g_pretrain_steps` defines how many steps this pretraining takes in total. The parameter `Training.g_warmup_steps` defines how many training steps (batches) the smooth LR increase lasts; setting it to `0` turns it off.
 
 During this generator-only pretraining window, the optimization target is hardwired to plain L1 loss only. Once pretraining ends, the normal configured content-loss mix (L1/SAM/perceptual/TV) is used again.
 ![gen_warmup](assets/pretrain_phase.png)  
@@ -42,8 +42,8 @@ Once the `training/pretrain_phase` flag is `0`, pretraining of the generator is 
 ![adv_warmup](assets/adv_loss_warmup.png)  
 
 #### Continued Training
-As training continues, the generator is trying to fool the discriminator and the discriminator is trying to distinguish between true/synthetic, we monitor the overall loss of the models independantly. When the overall loss metric of one model reaches a plateau, we reduce it's learning rate in order to optimnally train the model.
-![lr_scheduler](assets/lr_scheduler.png). The patience, LR decrease factor inc ase of plateau and the metric to be used for these LR schedulers are all defined individually for $G$ and $D$ in the `Schedulers.` section of the config file.
+As training continues, the generator tries to fool the discriminator, while the discriminator tries to distinguish between real and synthetic samples. We monitor the overall loss of both models independently. When the overall loss metric of one model reaches a plateau, we reduce its learning rate to train the model optimally.
+![lr_scheduler](assets/lr_scheduler.png). The patience, LR decrease factor in case of a plateau, and the metric used for these LR schedulers are all defined individually for \(G\) and \(D\) in the `Schedulers` section of the config file.
 
 The schedulers now expose a `cooldown` period and `min_lr` floor. Cooldown waits a configurable number of epochs before watching for the next plateau, preventing back-to-back reductions, while `min_lr` guarantees that the optimiser never stalls at zero. Use these knobs to keep the momentum of long trainings without overshooting into vanishing updates.
 
@@ -59,7 +59,7 @@ If you observe faint checkerboard textures, especially in flat/low-frequency are
 - `Training.Losses.fixed_idx: [0, 1, 2]` for 4-band inputs so VGG perceptual loss uses RGB consistently.
 
 #### Final stages of the Training
-With further progression of the training, it is important not only to monitor the absolute reconstruction quality of the generator, but also to keep an eye on the balance between the generator and discriminator. Ideally, we try to reach the Nash equilibrium, where the discriminator can not distinguish between real and synthetic anymore, meaning the super-resolution is (at least fdor the discriminator) indistinguishable from the real high-resolution image. This equilibrium is achieved when both $D(y)$ and $D(G(x))$ approach `0.5`.
+With further progression of training, it is important not only to monitor the absolute reconstruction quality of the generator, but also to keep an eye on the balance between the generator and discriminator. Ideally, we try to reach the Nash equilibrium, where the discriminator cannot distinguish between real and synthetic anymore, meaning the super-resolution is (at least for the discriminator) indistinguishable from the real high-resolution image. This equilibrium is achieved when both \(D(y)\) and \(D(G(x))\) approach `0.5`.
 ![adv1](assets/discr_y_prob.png)  
 ![adv2](assets/discr_x_prob.png)  
 

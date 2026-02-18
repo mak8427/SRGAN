@@ -5,7 +5,7 @@
 !!! note "PyTorch Lightning 2+ only"
     The training stack uses a single manual-optimisation path. `SRGAN_model.setup_lightning()` enforces Lightning >= 2.0 and binds `training_step_PL2()` where GAN training runs with `automatic_optimization = False`. `opensr_srgan.utils.build_trainer_kwargs.build_lightning_kwargs()` forwards resume checkpoints through `Trainer.fit(..., ckpt_path=...)`. See [Trainer Details](trainer-details.md) for a step-by-step breakdown of warm-up checks, adversarial updates, and EMA lifecycle.
 
-This section is a more technical overview, [Training Guideline](training-guideline.md) gives a more broad overview how to sirveill the training process.
+This section is a more technical overview; [Training Guideline](training-guideline.md) provides a broader overview of how to monitor the training process.
 
 ## Data module construction
 In order to train, you need a dataset. `Data.dataset_type` decides which dataset to use and wraps them in a `LightningDataModule`. Should you implement your own, you will need to add it to the dataset_selector.py file with the settings of your choice (see [Data](data.md)). Optionally, the selector instantiates `ExampleDataset` by default—perfect for smoke tests after downloading the sample data, a dataset of 200 RGB-NIR image pairs. The module inherits batch sizes, worker counts, and prefetching parameters from the configuration and prints a summary including dataset size.
@@ -33,7 +33,7 @@ Both entry points accept the same configuration file. The CLI exposes a single o
 GPU assignment is handled directly in the configuration. Set `Training.gpus` to a list of device indices (for example `[0, 1, 2, 3]`) to enable multi-GPU training; a single value such as `[0]` keeps the run on one card. When more than one device is listed the trainer automatically activates PyTorch Lightning's Distributed Data Parallel (DDP) backend for significantly faster epochs.
 
 ## Initialisation steps - Overview
-The code performs the following, no matter if the script is launched form the CLI or through the import.
+The code performs the following, regardless of whether the script is launched from the CLI or via import.
 1. **Import dependencies.** Torch, PyTorch Lightning, OmegaConf, and logging backends are loaded up-front.
 2. **Parse arguments.** `argparse` reads the configuration path and ensures the file exists.
 3. **Load configuration.** `OmegaConf.load()` parses the YAML file into an object used throughout the run.

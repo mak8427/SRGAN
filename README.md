@@ -49,7 +49,7 @@ All key knobs are exposed via YAML in the `opensr_srgan/configs` folder:
 * **EMA smoothing:** Enable `Training.EMA.enabled` to keep a shadow copy of the generator. Decay values in the 0.995–0.9999 range balance responsiveness with stability and are swapped in automatically for validation/inference.
 * **Spectral normalization:** Optional for the SRGAN discriminator via `Discriminator.use_spectral_norm` to better control its Lipschitz constant and stabilize adversarial updates. [Miyato et al., 2018](https://arxiv.org/abs/1802.05957)
 * **Wasserstein critic + R1 penalty:** Switch `Training.Losses.adv_loss_type: wasserstein` to enable a critic objective and pair it with the configurable `Training.Losses.r1_gamma` gradient penalty on real images for smoother discriminator updates. [Arjovsky et al., 2017](https://arxiv.org/abs/1701.07875); [Mescheder et al., 2018](https://arxiv.org/abs/1801.04406)
-* **Relativistic average GAN (BCE):** Set `Training.Losses.relativistic_average_d: true` to train D/G on relative real-vs-fake logits instead of absolute logits. This is supported in both Lightning training paths (PL1 and PL2).
+* **Relativistic average GAN (BCE):** Set `Training.Losses.relativistic_average_d: true` to train D/G on relative real-vs-fake logits instead of absolute logits. This is supported in the Lightning 2+ manual-optimization training path.
 The schedule and ramp make training **easier, safer, and more reproducible**.
 
 ---

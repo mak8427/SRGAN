@@ -109,7 +109,7 @@ stable validation imagery. The EMA is fully optional and controlled through the 
 | `adv_loss_beta` | `1e-3` | Target weight applied to the adversarial term after ramp-up. |
 | `adv_loss_schedule` | `cosine` | Ramp shape (`linear` or `cosine`). |
 | `adv_loss_type` | `bce` | Adversarial objective (`bce` for classic SRGAN logits, `wasserstein` for a non-saturating critic-style loss). |
-| `relativistic_average_d` | `False` | BCE-only switch for relativistic-average GAN training (real/fake logits are compared against each other's batch mean). Supported in both PL1 and PL2 training-step implementations. |
+| `relativistic_average_d` | `False` | BCE-only switch for relativistic-average GAN training (real/fake logits are compared against each other's batch mean). Supported in the Lightning 2+ manual-optimization training-step implementation. |
 | `r1_gamma` | `0.0` | Strength of the R1 gradient penalty applied to real images (useful with Wasserstein critics). |
 | `l1_weight` | `1.0` | Weight of the pixelwise L1 loss. |
 | `sam_weight` | `0.05` | Weight of the spectral angle mapper loss. |

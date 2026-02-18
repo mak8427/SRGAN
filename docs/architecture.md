@@ -2,9 +2,9 @@
 
 This document outlines how ESA OpenSR organises its super-resolution GAN, the major components that make up the model, and how each piece interacts during training and inference.
 
-## Vackground
+## Background
 
-OpenSR-SRGAN follows the single-image super-resolution (SISR) formulation in which the generator learns a mapping from a low-resolution observation $x$ to a plausible high-resolution reconstruction $x'$. The generator head widens the receptive field, a configurable trunk of $N$ residual-style blocks extracts features, and an upsampling tail increases spatial resolution. The residual fusion keeps skip connections active so the network focuses on high-frequency corrections rather than relearning the full signal:
+OpenSR-SRGAN follows the single-image super-resolution (SISR) formulation in which the generator learns a mapping from a low-resolution observation \(x\) to a plausible high-resolution reconstruction \(x'\). The generator head widens the receptive field, a configurable trunk of \(N\) residual-style blocks extracts features, and an upsampling tail increases spatial resolution. The residual fusion keeps skip connections active so the network focuses on high-frequency corrections rather than relearning the full signal:
 $$
 x' = \mathrm{Upsample}\!\left( \mathrm{Conv}_{\text{tail}}\!\left(\mathrm{Body}(x_{\text{head}}) + x_{\text{head}}\right)\! \right).
 $$
@@ -24,9 +24,10 @@ Because every generator variant (residual, RCAB, RRDB, large-kernel attention, E
   total-variation terms. Adversarial supervision uses `torch.nn.BCEWithLogitsLoss` with optional label smoothing.
 * **Optimiser scheduling.** `configure_optimizers()` returns paired Adam optimisers (generator + discriminator) with
   `ReduceLROnPlateau` schedulers that monitor a configurable validation metric.
-* **Training orchestration.** `training_step()` alternates discriminator (`optimizer_idx == 0`) and generator (`optimizer_idx ==
-  1`) updates. During the warm-up period configured by `Training.pretrain_g_only`, discriminator weights are frozen via
-  `on_train_batch_start()` and a dedicated `pretraining_training_step()` computes purely content-driven updates.
+* **Training orchestration.** `setup_lightning()` binds `training_step_PL2()` and enables manual optimisation
+  (`automatic_optimization = False`). Each step performs explicit discriminator and generator optimiser updates; during the
+  warm-up period configured by `Training.pretrain_g_only`, the generator runs content-driven updates while discriminator metrics
+  are logged without stepping discriminator weights.
 * **Validation and logging.** `validation_step()` computes the same content metrics, logs discriminator diagnostics, and pushes
   qualitative image panels to Weights & Biases according to `Logging.num_val_images`.
 * **Inference pipeline.** `predict_step()` automatically normalises Sentinel-2 style 0–10000 inputs, runs the generator,
@@ -53,7 +54,7 @@ The generator zoo lives under `opensr_srgan/model/generators/` and can be select
 * **Stochastic GAN generator (`cgan_generator.py`).** Extends the flexible generator with conditioning inputs and latent noise,
   enabling experiments where auxiliary metadata influences the super-resolution output.
 * **ESRGAN generator (`esrgan.py`).** Implements the RRDBNet trunk introduced with ESRGAN, exposing `n_blocks`, `growth_channels`,
-  and `res_scale` so you can dial in deeper receptive fields and sharper textures. The implementation supports original features like Relativistic Average GAN (RaGAN) and the codebase allows to perform two step training phase (content-oriented pretraining of generator followed by adversarial training with Discriminator) as originally proposed by ESRGAN authors.
+  and `res_scale` so you can dial in deeper receptive fields and sharper textures. The implementation supports original features like Relativistic Average GAN (RaGAN), and the codebase allows a two-step training phase (content-oriented pretraining of the generator followed by adversarial training with the discriminator), as originally proposed by the ESRGAN authors.
 * **Advanced variants (`SRGAN_advanced.py`).** Provides additional block implementations and compatibility aliases exposed in
   `__init__.py` for backwards compatibility.
 
