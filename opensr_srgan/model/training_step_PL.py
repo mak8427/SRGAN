@@ -144,21 +144,40 @@ def training_step_PL1(self, batch, batch_idx, optimizer_idx):
         if use_wasserstein:  # Wasserstein GAN loss
             loss_real = -hr_discriminated.mean()
             loss_fake = sr_discriminated.mean()
-        else:  # Standard GAN loss (BCE)
+        else:            
+            # Standard GAN loss (BCE)
             real_target = torch.full_like(
                 hr_discriminated, self.adv_target
             )  # get labels/fuzzy labels
             fake_target = torch.zeros_like(
                 sr_discriminated
             )  # zeros, since generative prediction
+            if self.relativistic_average_d:
+                # Relativistic Average GAN loss
 
-            # Binary Cross-Entropy loss
-            loss_real = self.adversarial_loss_criterion(
-                hr_discriminated, real_target
-            )  # BCEWithLogitsLoss for D(G(x))
-            loss_fake = self.adversarial_loss_criterion(
-                sr_discriminated, fake_target
-            )  # BCEWithLogitsLoss for D(y)
+                # Calculate real and fake means
+                real_mean = hr_discriminated.mean()
+                fake_mean = sr_discriminated.mean()
+
+                sr_discriminated_rel = sr_discriminated - real_mean
+                hr_discriminated_rel = hr_discriminated - fake_mean
+
+                loss_real = self.adversarial_loss_criterion(
+                    hr_discriminated_rel, real_target
+                )  # BCEWithLogitsLoss for D(y)
+
+                loss_fake = self.adversarial_loss_criterion(
+                    sr_discriminated_rel, fake_target
+                )  # BCEWithLogitsLoss for D(G(x))
+            else: # Standard GAN loss without relativistic average
+                # Binary Cross-Entropy loss
+                loss_real = self.adversarial_loss_criterion(
+                    hr_discriminated, real_target
+                ) * 0.5 # BCEWithLogitsLoss for D(y)
+
+                loss_fake = self.adversarial_loss_criterion(
+                    sr_discriminated, fake_target
+                ) * 0.5 # BCEWithLogitsLoss for D(G(x))
 
         # R1 Gradient Penalty (if enabled)
         r1_penalty = torch.zeros((), device=hr_imgs.device, dtype=hr_imgs.dtype)
@@ -198,6 +217,36 @@ def training_step_PL1(self, batch, batch_idx, optimizer_idx):
             "discriminator/D(G(x))_prob", d_fake_prob, prog_bar=True, sync_dist=True
         )  # log D(fake) confidence
 
+
+        if self.relativistic_average_d:
+            # Previous log of D opinions are not useful in RaGAN, log relativistic ones
+            with torch.no_grad():
+                real_mean = hr_discriminated.mean()
+                fake_mean = sr_discriminated.mean()
+
+                sr_discriminated_rel = sr_discriminated - real_mean
+                hr_discriminated_rel = hr_discriminated - fake_mean
+
+                d_real_prob_rel = torch.sigmoid(
+                    hr_discriminated_rel
+                ).mean()  # estimate mean real probability
+                d_fake_prob_rel = torch.sigmoid(
+                    sr_discriminated_rel
+                ).mean()  # estimate mean fake probability
+
+            self.log(
+                "train_metrics/discriminator/D(y)_prob_relativistic",
+                d_real_prob_rel,
+                prog_bar=True,
+                sync_dist=True,
+            )  # log D(real) confidence
+            self.log(
+                "train_metrics/discriminator/D(G(x))_prob_relativistic",
+                d_fake_prob_rel,
+                prog_bar=True,
+                sync_dist=True,
+            )  # log D(fake) confidence
+
         # return weighted discriminator loss
         return adversarial_loss  # PL will use this to step the D optimizer
 
@@ -229,10 +278,33 @@ def training_step_PL1(self, batch, batch_idx, optimizer_idx):
         )  # D(SR): logits for generator outputs
         if use_wasserstein:  # Wasserstein GAN loss
             adversarial_loss = -sr_discriminated.mean()
-        else:  # Standard GAN loss (BCE)
-            adversarial_loss = self.adversarial_loss_criterion(
-                sr_discriminated, torch.ones_like(sr_discriminated)
-            )  # keep taargets 1.0 for G loss
+        else:  
+            if self.relativistic_average_d:
+                # Relativistic Average GAN loss for G
+
+                # Calculate real mean
+                with torch.no_grad():
+                    hr_discriminated = self.discriminator(hr_imgs)
+                    real_mean = hr_discriminated.mean()
+
+                fake_mean = sr_discriminated.mean()
+                sr_discriminated_rel = sr_discriminated - real_mean
+                hr_discriminated_rel = hr_discriminated - fake_mean
+
+                loss_fake = self.adversarial_loss_criterion(
+                    sr_discriminated_rel, torch.ones_like(sr_discriminated)
+                )  # now target is 1.0 for G loss
+
+                loss_real = self.adversarial_loss_criterion(
+                    hr_discriminated_rel, torch.zeros_like(hr_discriminated)
+                )  # now target is 0.0 for G loss
+
+                adversarial_loss = (loss_fake + loss_real) / 2.0
+
+            else:
+                adversarial_loss = self.adversarial_loss_criterion(
+                    sr_discriminated, torch.ones_like(sr_discriminated)
+                )  # now target is 1.0 for G loss
         self.log(
             "generator/adversarial_loss", adversarial_loss, sync_dist=True
         )  # log unweighted adversarial loss

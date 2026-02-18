@@ -169,6 +169,9 @@ class SRGAN_model(pl.LightningModule):
         self.adv_loss_type = str(
             getattr(self.config.Training.Losses, "adv_loss_type", "bce")
         ).lower()
+        self.relativistic_average_d = bool(
+            getattr(self.config.Training.Losses, "relativistic_average_d", False)
+        )
         if self.adv_loss_type not in {"bce", "wasserstein"}:
             raise ValueError(
                 "Training.Losses.adv_loss_type must be either 'bce' or 'wasserstein'"
