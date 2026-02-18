@@ -104,3 +104,17 @@ def test_training_step_pl2_runs_manual_optimization():
     assert torch.is_tensor(loss)
     assert "discriminator/adversarial_loss" in harness.logged
     assert "generator/total_loss" in harness.logged
+
+
+def test_training_step_pl2_relativistic_branch_logs_rel_metrics():
+    harness = TrainingHarness(pretrain=False)
+    harness.pl_version = (2, 0, 0)
+    harness.automatic_optimization = False
+    harness.relativistic_average_d = True
+    harness.adv_loss_type = "bce"
+
+    loss = training_step_PL.training_step_PL2(harness, _sample_batch(), batch_idx=0)
+
+    assert torch.is_tensor(loss)
+    assert "train_metrics/discriminator/D(y)_prob_relativistic" in harness.logged
+    assert "train_metrics/discriminator/D(G(x))_prob_relativistic" in harness.logged

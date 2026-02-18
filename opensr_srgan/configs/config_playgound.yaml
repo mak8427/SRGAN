@@ -44,7 +44,7 @@ Training:
   
   # --- Pretraining and adversarial setup ---
   pretrain_g_only: False        # Train generator only for initial phase
-  g_pretrain_steps: 100000     # Number of generator-only warmup steps
+  g_pretrain_steps: 100000     # Number of generator-only warmup steps (-1 keeps pretraining active)
   adv_loss_ramp_steps: 25000   # Gradual adversarial weight ramp steps
   label_smoothing: True        # Discriminator target smoothing (1.0 → 0.9)
 
@@ -57,6 +57,7 @@ Training:
   Losses:
     # --- GAN term ---
     adv_loss_type: 'bce'       # Adversarial objective: ['bce', 'wasserstein']
+    relativistic_average_d: False  # BCE-only: use relativistic-average GAN losses/logs
     adv_loss_beta: 1e-3        # Final adversarial loss weight after ramp-up
     adv_loss_schedule: 'cosine'   # Adversarial weight ramp type: ['linear', 'cosine']
     r1_gamma: 0.0              # R1 gradient penalty strength on real images (0 disables)

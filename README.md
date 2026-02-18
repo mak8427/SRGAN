@@ -35,7 +35,8 @@ All key knobs are exposed via YAML in the `opensr_srgan/configs` folder:
 
 * **Model**: `in_channels`, `n_channels`, `n_blocks`, `scale`, ESRGAN knobs (`growth_channels`, `res_scale`, `out_channels`), `block_type ∈ {SRResNet, res, rcab, rrdb, lka}`
 * **Losses**: `l1_weight`, `sam_weight`, `perceptual_weight`, `tv_weight`, `adv_loss_beta`
-* **Training**: `pretrain_g_only`, `g_pretrain_steps`, `adv_loss_ramp_steps`, `label_smoothing`, generator LR warmup (`Schedulers.g_warmup_steps`, `Schedulers.g_warmup_type`), discriminator cadence controls
+* **Training**: `pretrain_g_only`, `g_pretrain_steps` (`-1` keeps generator-only pretraining active indefinitely), `adv_loss_ramp_steps`, `label_smoothing`, generator LR warmup (`Schedulers.g_warmup_steps`, `Schedulers.g_warmup_type`), discriminator cadence controls
+* **Adversarial mode**: `Training.Losses.adv_loss_type` (`bce`/`wasserstein`) and optional `Training.Losses.relativistic_average_d` for BCE-based relativistic-average GAN updates
 * **Data**: band order, normalization stats, crop sizes, augmentations
 
 ---
@@ -48,6 +49,7 @@ All key knobs are exposed via YAML in the `opensr_srgan/configs` folder:
 * **EMA smoothing:** Enable `Training.EMA.enabled` to keep a shadow copy of the generator. Decay values in the 0.995–0.9999 range balance responsiveness with stability and are swapped in automatically for validation/inference.
 * **Spectral normalization:** Optional for the SRGAN discriminator via `Discriminator.use_spectral_norm` to better control its Lipschitz constant and stabilize adversarial updates. [Miyato et al., 2018](https://arxiv.org/abs/1802.05957)
 * **Wasserstein critic + R1 penalty:** Switch `Training.Losses.adv_loss_type: wasserstein` to enable a critic objective and pair it with the configurable `Training.Losses.r1_gamma` gradient penalty on real images for smoother discriminator updates. [Arjovsky et al., 2017](https://arxiv.org/abs/1701.07875); [Mescheder et al., 2018](https://arxiv.org/abs/1801.04406)
+* **Relativistic average GAN (BCE):** Set `Training.Losses.relativistic_average_d: true` to train D/G on relative real-vs-fake logits instead of absolute logits. This is supported in both Lightning training paths (PL1 and PL2).
 The schedule and ramp make training **easier, safer, and more reproducible**.
 
 ---
@@ -59,7 +61,7 @@ The schedule and ramp make training **easier, safer, and more reproducible**.
 | **Generators** | `SRResNet`, `res`, `rcab`, `rrdb`, `lka`, `esrgan`, `stochastic_gan` | `Generator.model_type`, depth via `Generator.n_blocks`, width via `Generator.n_channels`, kernels/scale plus ESRGAN-specific `growth_channels`, `res_scale`, `out_channels`. |
 | **Discriminators** | `standard` `SRGAN`, `CNN`, `patchgan`, `esrgan` | `Discriminator.model_type`, granularity with `Discriminator.n_blocks`, spectral norm toggle via `Discriminator.use_spectral_norm`, ESRGAN-specific `base_channels`, `linear_size`. |
 | **Content losses** | L1, Spectral Angle Mapper, VGG19/LPIPS perceptual metrics, Total Variation | Weighted by `Training.Losses.*` (e.g. `l1_weight`, `sam_weight`, `perceptual_weight`, `perceptual_metric`, `tv_weight`). |
-| **Adversarial loss** | BCE‑with‑logits on real/fake logits | Warmup via `Training.pretrain_g_only`, ramped by `adv_loss_ramp_steps`, capped at `adv_loss_beta`, optional label smoothing. |
+| **Adversarial loss** | BCE‑with‑logits or Wasserstein critic | Controlled by `Training.Losses.adv_loss_type`, warmup via `Training.pretrain_g_only`, ramped by `adv_loss_ramp_steps`, capped at `adv_loss_beta`, optional label smoothing. For BCE, enable `Training.Losses.relativistic_average_d` for RaGAN-style relative logits. |
 
 The YAML keeps the SRGAN flexible: swap architectures or rebalance perceptual vs. spectral fidelity without touching the code.
 

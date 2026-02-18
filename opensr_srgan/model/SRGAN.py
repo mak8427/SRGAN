@@ -167,6 +167,9 @@ class SRGAN_model(pl.LightningModule):
         self.adv_loss_type = str(
             getattr(self.config.Training.Losses, "adv_loss_type", "bce")
         ).lower()
+        self.relativistic_average_d = bool(
+            getattr(self.config.Training.Losses, "relativistic_average_d", False)
+        )
         if self.adv_loss_type not in {"bce", "wasserstein"}:
             raise ValueError(
                 "Training.Losses.adv_loss_type must be either 'bce' or 'wasserstein'"
@@ -982,14 +985,14 @@ class SRGAN_model(pl.LightningModule):
 
         Returns:
             bool: True if the generator-only pretraining phase is active
-            (i.e., `global_step` < `g_pretrain_steps`), otherwise False.
+            (i.e., `global_step` < `g_pretrain_steps` or `g_pretrain_steps == -1`), otherwise False.
 
         Notes:
             - During pretraining, the discriminator is frozen and only the
             generator is updated.
         """
         if (
-            self.pretrain_g_only and self.global_step < self.g_pretrain_steps
+            self.pretrain_g_only and (self.global_step < self.g_pretrain_steps or self.g_pretrain_steps == -1)
         ):  # true if pretraining active
             return True
         else:
