@@ -1091,14 +1091,14 @@ class SRGAN_model(pl.LightningModule):
 
         Returns:
             bool: True if the generator-only pretraining phase is active
-            (i.e., `global_step` < `g_pretrain_steps`), otherwise False.
+            (i.e., `global_step` < `g_pretrain_steps` or `g_pretrain_steps == -1`), otherwise False.
 
         Notes:
             - During pretraining, the discriminator is frozen and only the
             generator is updated.
         """
         if (
-            self.pretrain_g_only and self.global_step < self.g_pretrain_steps
+            self.pretrain_g_only and (self.global_step < self.g_pretrain_steps or self.g_pretrain_steps == -1)
         ):  # true if pretraining active
             return True
         else:
