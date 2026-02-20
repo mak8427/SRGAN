@@ -4,7 +4,7 @@
 
 | **PyPI** | **Versions** | **Docs & License** | **Tests** | **Reference** |
 |:---------:|:-------------:|:------------------:|:----------:|:--------------:|
-| [![PyPI](https://img.shields.io/pypi/v/opensr-srgan)](https://pypi.org/project/opensr-srgan/) | ![PythonVersion](https://img.shields.io/badge/Python-v3.10%20v3.12-blue.svg)<br>![PLVersion](https://img.shields.io/badge/PyTorchLightning-v1.9%20v2.0-blue.svg) | [![Docs](https://img.shields.io/badge/docs-mkdocs%20material-brightgreen)](https://srgan.opensr.eu)<br>![License: Apache](https://img.shields.io/badge/license-Apache%20License%202.0-blue) | [![CI](https://github.com/ESAOpenSR/SRGAN/actions/workflows/ci.yml/badge.svg)](https://github.com/ESAOpenSR/SRGAN/actions/workflows/ci.yml)<br>[![codecov](https://codecov.io/github/ESAOpenSR/SRGAN/graph/badge.svg?token=LQ69MIMLVE)](https://codecov.io/github/ESAOpenSR/SRGAN) | [![arXiv](https://img.shields.io/badge/arXiv-2511.10461-b31b1b.svg)](https://arxiv.org/abs/2511.10461)<br>[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17590993.svg)](https://doi.org/10.5281/zenodo.17590993) |
+| [![PyPI](https://img.shields.io/pypi/v/opensr-srgan)](https://pypi.org/project/opensr-srgan/) | ![PythonVersion](https://img.shields.io/badge/Python-v3.10%20v3.12-blue.svg)<br>![PLVersion](https://img.shields.io/badge/PyTorchLightning-v2%2B-blue.svg) | [![Docs](https://img.shields.io/badge/docs-mkdocs%20material-brightgreen)](https://srgan.opensr.eu)<br>![License: Apache](https://img.shields.io/badge/license-Apache%20License%202.0-blue) | [![CI](https://github.com/ESAOpenSR/SRGAN/actions/workflows/ci.yml/badge.svg)](https://github.com/ESAOpenSR/SRGAN/actions/workflows/ci.yml)<br>[![codecov](https://codecov.io/github/ESAOpenSR/SRGAN/graph/badge.svg?token=LQ69MIMLVE)](https://codecov.io/github/ESAOpenSR/SRGAN) | [![arXiv](https://img.shields.io/badge/arXiv-2511.10461-b31b1b.svg)](https://arxiv.org/abs/2511.10461)<br>[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17590993.svg)](https://doi.org/10.5281/zenodo.17590993) |
 
 ![Super-resolved Sentinel-2 example](assets/6band_banner.png)
 
@@ -12,7 +12,7 @@ OpenSR-SRGAN is a comprehensive toolkit for training and evaluating super-resolu
 that make adversarial optimisation tractable—generator warm-up phases, learning-rate scheduling, adversarial-weight ramping, and more. All options are driven by concise YAML configuration files so you can explore new architectures or datasets without
 rewriting pipelines.  
   
-Whether you are reproducing published results, exploring new remote-sensing modalities, or are trying to esablish some benchmarks, OpenSR-SRGAN gives you a clear and extensible foundation for multispectral super-resolution research.
+Whether you are reproducing published results, exploring new remote-sensing modalities, or trying to establish benchmarks, OpenSR-SRGAN gives you a clear and extensible foundation for multispectral super-resolution research.
 
 > This repository and the configs represent the experiences that were made with SR-GAN training for remote sensing imagery. It's neither complete nor claims to perform SOTA SR, but it implements all tweaks and tips that make training SR-GANs easier.
 
@@ -25,7 +25,7 @@ Whether you are reproducing published results, exploring new remote-sensing moda
 * **Battle-tested training loop.** PyTorch Lightning handles mixed precision, gradient accumulation, multi-GPU training, and
   restartable checkpoints while the repo layers in GAN-specific tweaks such as adversarial weight ramping and learning-rate
   restarts.
-* **Lightning 1.x ↔ 2.x compatibility.** The trainer detects the installed Lightning version at runtime and routes to the appropriate automatic- or manual-optimisation step so your configs run unchanged across releases.
+* **Lightning 2+ training path.** Training uses manual optimization (`automatic_optimization=False`) and a single GAN training-step implementation.
 * **Remote-sensing aware defaults.** Normalisation, histogram matching, spectral-band handling, and Sentinel-2 SAFE ingestion are
   ready-made for 10 m and 20 m bands and easily extendable to other sensors.
 
@@ -82,7 +82,7 @@ Whether you are reproducing published results, exploring new remote-sensing moda
 * [Results](results.md) showcases results for some generator/discriminator and dataset combinations.
 
 ## ESA OpenSR
-OpenSR-SRGAN is part of the ESA [OpenSR](https://www.opensr.eu) ecosystem — an open framework for trustworthy super-resolution of multispectral satellite imagery. Within this initiative, this repository serves as the adversarial benchmark suite: it provides standardized GAN architectures, training procedures, and evaluation utilities that complement the other model types implemented in the project (diffusion, transformers, regression) and interfaces with from companion packages such as opensr-utils.
+OpenSR-SRGAN is part of the ESA [OpenSR](https://www.opensr.eu) ecosystem — an open framework for trustworthy super-resolution of multispectral satellite imagery. Within this initiative, this repository serves as the adversarial benchmark suite: it provides standardized GAN architectures, training procedures, and evaluation utilities that complement the other model types implemented in the project (diffusion, transformers, regression), and it interfaces with companion packages such as opensr-utils.
 
 ## Citation
 

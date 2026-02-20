@@ -1,340 +1,14 @@
 import torch
 
 
-def training_step_PL1(self, batch, batch_idx, optimizer_idx):
-    """One training step for PL < 2.0 using automatic optimization and multi-optimizers.
-
-    Implements GAN training with two optimizers (D first, then G) and a
-    pretraining gate. During the **pretraining phase**, only the generator
-    (optimizer_idx == 1) is optimized with content loss; the discriminator
-    branch returns a dummy loss and logs zeros. During **adversarial training**,
-    the discriminator minimizes BCE on real HR vs. fake SR logits, and the
-    generator minimizes content loss plus a ramped adversarial loss.
-
-    Args:
-        batch (Tuple[torch.Tensor, torch.Tensor]): `(lr_imgs, hr_imgs)` with shape `(B, C, H, W)`.
-        batch_idx (int): Global batch index for the current epoch.
-        optimizer_idx (int): Active optimizer index provided by Lightning:
-            - `0`: Discriminator step.
-            - `1`: Generator step.
-
-    Returns:
-        torch.Tensor:
-            - **Pretraining**:
-              - `optimizer_idx == 1`: content loss tensor for the generator.
-              - `optimizer_idx == 0`: dummy scalar tensor with `requires_grad=True`.
-            - **Adversarial training**:
-              - `optimizer_idx == 0`: discriminator BCE loss (real + fake).
-              - `optimizer_idx == 1`: generator total loss = content + λ_adv · BCE(G).
-
-    Logged Metrics (selection):
-        - `"training/pretrain_phase"`: 1.0 during pretraining (logged on G step).
-        - `"train_metrics/*"`: content metrics from the content loss criterion.
-        - `"generator/content_loss"`, `"generator/adversarial_loss"`, `"generator/total_loss"`.
-        - `"discriminator/adversarial_loss"`, `"discriminator/D(y)_prob"`,
-          `"discriminator/D(G(x))_prob"`.
-        - `"training/adv_loss_weight"`: current λ_adv from the ramp scheduler.
-
-    Notes:
-        - Discriminator step uses `sr_imgs.detach()` to prevent G gradients.
-        - Adversarial loss weight λ_adv ramps from 0 → `adv_loss_beta` per configured schedule.
-        - Assumes optimizers are ordered as `[D, G]` in `configure_optimizers()`.
-    """
-
-    # -------- CREATE SR DATA --------
-    lr_imgs, hr_imgs = batch  # unpack LR/HR tensors from dataloader batch
-    sr_imgs = self.forward(
-        lr_imgs
-    )  # forward pass of the generator to produce SR from LR
-
-    # Default to standard GAN loss if adv_loss_type is not defined (e.g., lightweight
-    # harnesses in tests). The real model sets this attribute during init.
-    use_wasserstein = getattr(self, "adv_loss_type", "gan") == "wasserstein"
-    use_relativistic = bool(getattr(self, "relativistic_average_d", False))
-
-    # ======================================================================
-    # SECTION: Pretraining phase gate
-    # Purpose: decide if we are in the content-only pretrain stage.
-    # ======================================================================
-
-    # -------- DETERMINE PRETRAINING --------
-    pretrain_phase = (
-        self._pretrain_check()
-    )  # check schedule: True => content-only pretraining
-    if optimizer_idx == 1:  # log whether pretraining is active or not
-        self.log(
-            "training/pretrain_phase",
-            float(pretrain_phase),
-            prog_bar=False,
-            sync_dist=True,
-        )  # log once per G step to track phase state
-
-    # ======================================================================
-    # SECTION: Pretraining branch (delegated)
-    # Purpose: during pretrain, only content loss for G and dummy logging for D.
-    # ======================================================================
-
-    # -------- IF PRETRAIN: delegate --------
-    if pretrain_phase:
-        # run pretrain step separately and return loss here
-        if optimizer_idx == 1:
-            content_loss, metrics = self.content_loss_criterion.return_loss(
-                sr_imgs, hr_imgs
-            )  # compute perceptual/content loss (e.g., VGG or L1)
-            self._log_generator_content_loss(
-                content_loss
-            )  # log content loss for G (consistent args)
-            for key, value in metrics.items():
-                self.log(
-                    f"train_metrics/{key}", value, sync_dist=True
-                )  # reuse computed metrics for logging
-
-            # Ensure adversarial weight is logged even when not used during pretraining
-            adv_weight = self._compute_adv_loss_weight()
-            self._log_adv_loss_weight(adv_weight)
-            return content_loss  # return loss for optimizer step (G only)
-
-        # ======================================================================
-        # SECTION: Discriminator (D) pretraining step
-        # Purpose: no real training — just log zeros and return dummy loss to satisfy closure.
-        # ======================================================================
-        elif optimizer_idx == 0:
-            device, dtype = (
-                hr_imgs.device,
-                hr_imgs.dtype,
-            )  # get tensor device and dtype for consistency
-            zero = torch.tensor(
-                0.0, device=device, dtype=dtype
-            )  # define reusable zero tensor
-
-            # --- Log dummy discriminator "opinions" (always zero during pretrain) ---
-            self.log(
-                "discriminator/D(y)_prob", zero, prog_bar=True, sync_dist=True
-            )  # fake real-prob (always 0)
-            self.log(
-                "discriminator/D(G(x))_prob", zero, prog_bar=True, sync_dist=True
-            )  # fake fake-prob (always 0)
-
-            # --- Create dummy scalar loss (ensures PL closure runs) ---
-            dummy = torch.zeros(
-                (), device=device, dtype=dtype, requires_grad=True
-            )  # dummy value with grad for optimizer compatibility
-            self.log(
-                "discriminator/adversarial_loss", dummy, sync_dist=True
-            )  # log dummy adversarial loss (always 0)
-            return dummy
-    # -------- END PRETRAIN --------
-
-    # ======================================================================
-    # SECTION: Adversarial training — Discriminator step
-    # Purpose: update D to distinguish HR (real) vs SR (fake).
-    # ======================================================================
-
-    # -------- Normal Train: Discriminator Step  --------
-    if optimizer_idx == 0:
-        r1_gamma = getattr(self, "r1_gamma", 0.0)  # default to 0 for
-        hr_imgs.requires_grad_(r1_gamma > 0)  # enable grad for R1 penalty if needed
-
-        # run discriminator and get loss between pred labels and true labels
-        hr_discriminated = self.discriminator(hr_imgs)  # D(real): logits for HR images
-        sr_discriminated = self.discriminator(
-            sr_imgs.detach()
-        )  # detach so G doesn’t get gradients from D’s step
-
-        # Check for WS GAN loss
-        if use_wasserstein:  # Wasserstein GAN loss
-            loss_real = -hr_discriminated.mean()
-            loss_fake = sr_discriminated.mean()
-        else:            
-            # Standard GAN loss (BCE)
-            real_target = torch.full_like(
-                hr_discriminated, self.adv_target
-            )  # get labels/fuzzy labels
-            fake_target = torch.zeros_like(
-                sr_discriminated
-            )  # zeros, since generative prediction
-            if self.relativistic_average_d:
-                # Relativistic Average GAN loss
-
-                # Calculate real and fake means
-                real_mean = hr_discriminated.mean()
-                fake_mean = sr_discriminated.mean()
-
-                sr_discriminated_rel = sr_discriminated - real_mean
-                hr_discriminated_rel = hr_discriminated - fake_mean
-
-                loss_real = self.adversarial_loss_criterion(
-                    hr_discriminated_rel, real_target
-                )  # BCEWithLogitsLoss for D(y)
-
-                loss_fake = self.adversarial_loss_criterion(
-                    sr_discriminated_rel, fake_target
-                )  # BCEWithLogitsLoss for D(G(x))
-            else: # Standard GAN loss without relativistic average
-                # Binary Cross-Entropy loss
-                loss_real = self.adversarial_loss_criterion(
-                    hr_discriminated, real_target
-                ) * 0.5 # BCEWithLogitsLoss for D(y)
-
-                loss_fake = self.adversarial_loss_criterion(
-                    sr_discriminated, fake_target
-                ) * 0.5 # BCEWithLogitsLoss for D(G(x))
-
-        # R1 Gradient Penalty (if enabled)
-        r1_penalty = torch.zeros((), device=hr_imgs.device, dtype=hr_imgs.dtype)
-        if r1_gamma > 0:
-            grad_real = torch.autograd.grad(
-                outputs=hr_discriminated.sum(),
-                inputs=hr_imgs,
-                create_graph=True,
-                retain_graph=True,
-            )[0]
-            grad_penalty = grad_real.pow(2).reshape(grad_real.size(0), -1).sum(dim=1)
-            r1_penalty = 0.5 * r1_gamma * grad_penalty.mean()
-
-        # Sum up losses
-        adversarial_loss = (
-            loss_real + loss_fake + r1_penalty
-        )  # add 0s for R1 if disabled
-        self.log(
-            "discriminator/adversarial_loss", adversarial_loss, sync_dist=True
-        )  # log weighted loss
-        self.log(
-            "discriminator/r1_penalty", r1_penalty.detach(), sync_dist=True
-        )  # log R1 penalty regarless, is 0 when turned off
-
-        # [LOG-B] Always log D opinions: real probs in normal training
-        with torch.no_grad():
-            d_real_prob = torch.sigmoid(
-                hr_discriminated
-            ).mean()  # estimate mean real probability
-            d_fake_prob = torch.sigmoid(
-                sr_discriminated
-            ).mean()  # estimate mean fake probability
-        self.log(
-            "discriminator/D(y)_prob", d_real_prob, prog_bar=True, sync_dist=True
-        )  # log D(real) confidence
-        self.log(
-            "discriminator/D(G(x))_prob", d_fake_prob, prog_bar=True, sync_dist=True
-        )  # log D(fake) confidence
-
-
-        if self.relativistic_average_d:
-            # Previous log of D opinions are not useful in RaGAN, log relativistic ones
-            with torch.no_grad():
-                real_mean = hr_discriminated.mean()
-                fake_mean = sr_discriminated.mean()
-
-                sr_discriminated_rel = sr_discriminated - real_mean
-                hr_discriminated_rel = hr_discriminated - fake_mean
-
-                d_real_prob_rel = torch.sigmoid(
-                    hr_discriminated_rel
-                ).mean()  # estimate mean real probability
-                d_fake_prob_rel = torch.sigmoid(
-                    sr_discriminated_rel
-                ).mean()  # estimate mean fake probability
-
-            self.log(
-                "train_metrics/discriminator/D(y)_prob_relativistic",
-                d_real_prob_rel,
-                prog_bar=True,
-                sync_dist=True,
-            )  # log D(real) confidence
-            self.log(
-                "train_metrics/discriminator/D(G(x))_prob_relativistic",
-                d_fake_prob_rel,
-                prog_bar=True,
-                sync_dist=True,
-            )  # log D(fake) confidence
-
-        # return weighted discriminator loss
-        return adversarial_loss  # PL will use this to step the D optimizer
-
-    # ======================================================================
-    # SECTION: Adversarial training — Generator step
-    # Purpose: update G to minimize content loss + (weighted) adversarial loss.
-    # ======================================================================
-
-    # -------- Normal Train: Generator Step  --------
-    if optimizer_idx == 1:
-
-        """1. Get VGG space loss"""
-        # encode images
-        content_loss, metrics = self.content_loss_criterion.return_loss(
-            sr_imgs, hr_imgs
-        )  # perceptual/content criterion (e.g., VGG)
-        self._log_generator_content_loss(
-            content_loss
-        )  # log content loss for G (consistent args)
-        for key, value in metrics.items():
-            self.log(
-                f"train_metrics/{key}", value, sync_dist=True
-            )  # log detailed metrics without extra forward passes
-
-        """ 2. Get Discriminator Opinion and loss """
-        # run discriminator and get loss between pred labels and true labels
-        sr_discriminated = self.discriminator(
-            sr_imgs
-        )  # D(SR): logits for generator outputs
-        if use_wasserstein:  # Wasserstein GAN loss
-            adversarial_loss = -sr_discriminated.mean()
-        else:  
-            if self.relativistic_average_d:
-                # Relativistic Average GAN loss for G
-
-                # Calculate real mean
-                with torch.no_grad():
-                    hr_discriminated = self.discriminator(hr_imgs)
-                    real_mean = hr_discriminated.mean()
-
-                fake_mean = sr_discriminated.mean()
-                sr_discriminated_rel = sr_discriminated - real_mean
-                hr_discriminated_rel = hr_discriminated - fake_mean
-
-                loss_fake = self.adversarial_loss_criterion(
-                    sr_discriminated_rel, torch.ones_like(sr_discriminated)
-                )  # now target is 1.0 for G loss
-
-                loss_real = self.adversarial_loss_criterion(
-                    hr_discriminated_rel, torch.zeros_like(hr_discriminated)
-                )  # now target is 0.0 for G loss
-
-                adversarial_loss = (loss_fake + loss_real) / 2.0
-
-            else:
-                adversarial_loss = self.adversarial_loss_criterion(
-                    sr_discriminated, torch.ones_like(sr_discriminated)
-                )  # now target is 1.0 for G loss
-        self.log(
-            "generator/adversarial_loss", adversarial_loss, sync_dist=True
-        )  # log unweighted adversarial loss
-
-        """ 3. Weight the losses"""
-        adv_weight = (
-            self._adv_loss_weight()
-        )  # get adversarial weight based on current step
-        adversarial_loss_weighted = (
-            adversarial_loss * adv_weight
-        )  # weight adversarial loss
-        total_loss = content_loss + adversarial_loss_weighted  # total content loss
-        self.log(
-            "generator/total_loss", total_loss, sync_dist=True
-        )  # log combined objective (content + λ_adv * adv)
-
-        # return Generator loss
-        return total_loss
-
-
 def training_step_PL2(self, batch, batch_idx):
-    """Manual-optimization training step for PyTorch Lightning ≥ 2.0.
+    """Manual-optimization training step for PyTorch Lightning >= 2.
 
-    Mirrors the PL1.x logic with explicit optimizer control:
+    Performs two explicit optimizer updates per batch:
     - **Pretraining phase**: Discriminator logs dummies; Generator is optimized with
-      content loss only (no adversarial term), and EMA optionally updates.
+      hardwired L1 loss only (no adversarial term), and EMA optionally updates.
     - **Adversarial phase**: Performs a Discriminator step (real vs. fake BCE),
-      followed by a Generator step (content + λ_adv · BCE against ones). Uses the
-      same log keys and ordering as the PL1.x path.
+      followed by a Generator step (content + λ_adv · BCE against ones).
 
     Assumptions:
         - `self.automatic_optimization` is `False` (manual opt).
@@ -356,18 +30,10 @@ def training_step_PL2(self, batch, batch_idx):
         - `"generator/content_loss"`, `"generator/adversarial_loss"`, `"generator/total_loss"`
         - `"discriminator/adversarial_loss"`, `"discriminator/D(y)_prob"`, `"discriminator/D(G(x))_prob"`
         - `"training/adv_loss_weight"` (λ_adv from ramp schedule)
-
-    Raises:
-        AssertionError: If PL version < 2.0 or `automatic_optimization` is True.
     """
-    assert self.pl_version >= (
-        2,
-        0,
-        0,
-    ), "training_step_PL2 requires PyTorch Lightning >= 2.x."
     assert (
         self.automatic_optimization is False
-    ), "training_step_PL2 requires manual_optimization."
+    ), "training_step_PL2 requires manual optimization."
 
     # -------- CREATE SR DATA --------
     lr_imgs, hr_imgs = batch
@@ -405,26 +71,24 @@ def training_step_PL2(self, batch, batch_idx):
     # SECTION: Pretraining phase gate
     # ======================================================================
     pretrain_phase = self._pretrain_check()
-    # in PL1.x you logged this only on G-step; here we log once per batch
     self.log(
         "training/pretrain_phase", float(pretrain_phase), prog_bar=False, sync_dist=True
     )
 
     # ======================================================================
-    # SECTION: Pretraining branch (content-only on G; D logs dummies)
+    # SECTION: Pretraining branch (L1-only on G; D logs dummies)
     # ======================================================================
     if pretrain_phase:
-        # --- D dummy logs (no step) to mimic your optimizer_idx==0 branch ---
+        # --- D dummy logs (no step during pretraining) ---
         with torch.no_grad():
             zero = torch.tensor(0.0, device=hr_imgs.device, dtype=hr_imgs.dtype)
             self.log("discriminator/D(y)_prob", zero, prog_bar=True, sync_dist=True)
             self.log("discriminator/D(G(x))_prob", zero, prog_bar=True, sync_dist=True)
             self.log("discriminator/adversarial_loss", zero, sync_dist=True)
 
-        # --- G step: content loss only (identical to your optimizer_idx==1 pretrain) ---
-        content_loss, metrics = self.content_loss_criterion.return_loss(
-            sr_imgs, hr_imgs
-        )
+        # --- G step: hardwired L1-only pretraining loss ---
+        content_loss = torch.nn.functional.l1_loss(sr_imgs, hr_imgs)
+        metrics = {"l1": content_loss.detach()}
         self._log_generator_content_loss(content_loss)
         for key, value in metrics.items():
             self.log(f"train_metrics/{key}", value, sync_dist=True)
@@ -446,7 +110,6 @@ def training_step_PL2(self, batch, batch_idx):
         if self.ema is not None and self.global_step >= self._ema_update_after_step:
             self.ema.update(self.generator)
 
-        # return same scalar you’d have returned in PL1.x (content loss)
         return content_loss
 
     # ======================================================================
@@ -459,7 +122,6 @@ def training_step_PL2(self, batch, batch_idx):
     # Get R1 Gamma
     r1_gamma = getattr(self, "r1_gamma", 0.0)
     hr_imgs.requires_grad_(r1_gamma > 0)  # enable grad for R1 penalty if needed
-
 
     hr_discriminated = self.discriminator(hr_imgs)  # D(y)
     sr_discriminated = self.discriminator(sr_imgs.detach())  # D(G(x)) w/o grad to G
@@ -482,7 +144,7 @@ def training_step_PL2(self, batch, batch_idx):
             loss_real = self.adversarial_loss_criterion(hr_discriminated_rel, real_target)
             loss_fake = self.adversarial_loss_criterion(sr_discriminated_rel, fake_target)
         else:
-            # Keep PL1 and PL2 loss scales consistent for non-relativistic BCE.
+            # Keep loss scales consistent for non-relativistic BCE.
             loss_real = self.adversarial_loss_criterion(hr_discriminated, real_target) * 0.5
             loss_fake = self.adversarial_loss_criterion(sr_discriminated, fake_target) * 0.5
 
@@ -599,5 +261,4 @@ def training_step_PL2(self, batch, batch_idx):
     if self.ema is not None and self.global_step >= self._ema_update_after_step:
         self.ema.update(self.generator)
 
-    # return same scalar you return in PL1.x G path
     return total_loss

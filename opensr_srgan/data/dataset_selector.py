@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 LRHR_FOLDER_DATASET_ROOT = "data/"
+SEN2NAIP_TACO_FILE = "/data1/datasets/SEN2NAIP/sen2naipv2-crosssensor.taco"
 
 
 def select_dataset(config):
@@ -41,6 +42,12 @@ def select_dataset(config):
         ds_train = ExampleDataset(folder=path, phase="train")
         ds_val = ExampleDataset(folder=path, phase="val")
 
+    elif str(dataset_selection).lower() == "sen2naip":
+        from opensr_srgan.data.sen2naip.sen2naip_dataset import SEN2NAIP
+
+        ds_train = SEN2NAIP(config=config, phase="train", taco_file=SEN2NAIP_TACO_FILE)
+        ds_val = SEN2NAIP(config=config, phase="val", taco_file=SEN2NAIP_TACO_FILE)
+        
     elif dataset_selection == "LRHRFolderDataset":
         from opensr_srgan.data.lrhr_folder.lrhr_folder_dataset import LRHRFolderDataset
 

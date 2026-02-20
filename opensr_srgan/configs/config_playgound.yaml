@@ -121,8 +121,6 @@ Schedulers:
   patience_d: 10              # Patience (epochs) for Discriminator LR scheduler
   factor_g: 0.5                # LR reduction factor for Generator
   factor_d: 0.5                # LR reduction factor for Discriminator
-  verbose: True                # Enable scheduler logging output
-
 
 # ============================================================================ #
 # 🧾 LOGGING SETTINGS

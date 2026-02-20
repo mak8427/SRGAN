@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import torch
 from torch import nn
+from torch.nn import init
 
 from .EMA import ExponentialMovingAverage
 
@@ -251,14 +252,39 @@ class LKAResBlock(nn.Module):
         return x + self.res_scale * y
 
 
-def make_upsampler(n_channels: int, scale: int) -> nn.Sequential:
+def _icnr_(weight: torch.Tensor, scale: int = 2) -> None:
+    """Apply ICNR initialization to a pre-pixel-shuffle convolution kernel."""
+
+    out_channels, in_channels, k1, k2 = weight.shape
+    if out_channels % (scale**2) != 0:
+        raise ValueError("ICNR requires out_channels divisible by scale**2.")
+    subkernel = torch.empty(
+        out_channels // (scale**2),
+        in_channels,
+        k1,
+        k2,
+        device=weight.device,
+        dtype=weight.dtype,
+    )
+    init.kaiming_normal_(subkernel)
+    subkernel = subkernel.repeat_interleave(scale**2, dim=0)
+    with torch.no_grad():
+        weight.copy_(subkernel)
+
+
+def make_upsampler(n_channels: int, scale: int, *, use_icnr: bool = False) -> nn.Sequential:
     """Create a pixel-shuffle upsampler matching the flexible generator implementation."""
 
     stages: list[nn.Module] = []
     for _ in range(int(math.log2(scale))):
+        conv = nn.Conv2d(n_channels, n_channels * 4, 3, padding=1)
+        if use_icnr:
+            _icnr_(conv.weight, scale=2)
+            if conv.bias is not None:
+                init.zeros_(conv.bias)
         stages.extend(
             [
-                nn.Conv2d(n_channels, n_channels * 4, 3, padding=1),
+                conv,
                 nn.PixelShuffle(2),
                 nn.PReLU(),
             ]

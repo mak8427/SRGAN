@@ -3,9 +3,6 @@
 import sys
 import types
 
-import importlib.util
-from pathlib import Path
-
 import pytest
 from omegaconf import OmegaConf
 
@@ -29,7 +26,6 @@ if "pytorch_lightning" not in sys.modules:
             log_every_n_steps=None,
             logger=None,
             callbacks=None,
-            resume_from_checkpoint=None,
         ) -> None:
             pass
 
@@ -92,8 +88,8 @@ def test_cpu_device_forces_single_device(monkeypatch):
     assert fit_kwargs == {}
 
 
-def test_multi_gpu_enables_ddp(monkeypatch):
-    """Multiple GPUs trigger the DDP strategy when CUDA is requested."""
+def test_multi_gpu_enables_ddp_with_unused_param_detection(monkeypatch):
+    """Multiple GPUs default to DDP with find-unused-parameters enabled."""
 
     monkeypatch.setattr(
         "opensr_srgan.utils.build_trainer_kwargs.torch.cuda.is_available",
@@ -104,7 +100,7 @@ def test_multi_gpu_enables_ddp(monkeypatch):
 
     assert trainer_kwargs["accelerator"] == "gpu"
     assert trainer_kwargs["devices"] == [0, 1]
-    assert trainer_kwargs["strategy"] == "ddp"
+    assert trainer_kwargs["strategy"] == "ddp_find_unused_parameters_true"
 
 
 def test_auto_device_respects_cuda_availability(monkeypatch):
@@ -131,57 +127,46 @@ def test_invalid_device_raises():
         _call_builder(config)
 
 
-def test_integer_gpu_count_and_resume_for_pre_v2(monkeypatch):
-    """PL<2 uses ``resume_from_checkpoint`` in Trainer kwargs."""
+def test_integer_gpu_count_enables_ddp_and_resume_ckpt_path():
+    """Integer GPU counts still enable DDP and resume via ``ckpt_path``."""
 
-    monkeypatch.setattr("opensr_srgan.utils.build_trainer_kwargs.pl.__version__", "1.9.5")
-    class _TrainerV1:
-        def __init__(
-            self,
-            *,
-            accelerator=None,
-            strategy=None,
-            devices=None,
-            val_check_interval=None,
-            limit_val_batches=None,
-            max_epochs=None,
-            log_every_n_steps=None,
-            logger=None,
-            callbacks=None,
-            gradient_clip_val=None,
-            resume_from_checkpoint=None,
-        ) -> None:
-            pass
-
-        def fit(self, *args, **kwargs):
-            return None
-
-    monkeypatch.setattr(
-        "opensr_srgan.utils.build_trainer_kwargs.pl.Trainer", _TrainerV1
-    )
     config = _make_config(device="cuda", gpus=2)
     trainer_kwargs, fit_kwargs = _call_builder(config, resume_ckpt="resume.ckpt")
 
     assert trainer_kwargs["devices"] == 2
+    assert trainer_kwargs["strategy"] == "ddp_find_unused_parameters_true"
+    assert fit_kwargs == {"ckpt_path": "resume.ckpt"}
+
+
+def test_multi_gpu_can_disable_unused_param_detection(monkeypatch):
+    """Config can opt out and use plain DDP strategy."""
+
+    monkeypatch.setattr(
+        "opensr_srgan.utils.build_trainer_kwargs.torch.cuda.is_available",
+        lambda: True,
+    )
+    config = _make_config(
+        device="cuda",
+        gpus=[0, 1],
+        find_unused_parameters=False,
+    )
+    trainer_kwargs, _ = _call_builder(config)
+
     assert trainer_kwargs["strategy"] == "ddp"
-    assert trainer_kwargs["resume_from_checkpoint"] == "resume.ckpt"
-    assert fit_kwargs == {}
 
 
-def test_v2_resume_uses_fit_ckpt_path(monkeypatch):
+def test_v2_resume_uses_fit_ckpt_path():
     """PL>=2 forwards resume checkpoints via ``Trainer.fit(ckpt_path=...)``."""
 
-    monkeypatch.setattr("opensr_srgan.utils.build_trainer_kwargs.pl.__version__", "2.2.0")
     config = _make_config(device="cuda", gpus=[0])
     _, fit_kwargs = _call_builder(config, resume_ckpt="resume.ckpt")
 
     assert fit_kwargs == {"ckpt_path": "resume.ckpt"}
 
 
-def test_non_sequence_gpu_config_falls_back_to_single_device(monkeypatch):
+def test_non_sequence_gpu_config_falls_back_to_single_device():
     """Unexpected ``gpus`` values trigger the safe single-device fallback."""
 
-    monkeypatch.setattr("opensr_srgan.utils.build_trainer_kwargs.pl.__version__", "2.2.0")
     config = _make_config(device="cuda", gpus="not-a-device-list")
     trainer_kwargs, _ = _call_builder(config)
 

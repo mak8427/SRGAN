@@ -141,6 +141,21 @@ class _StubLRHRFolderDataset(Dataset):
         return value, value + 1
 
 
+class _StubSEN2NAIPDataset(Dataset):
+    created_args = []
+
+    def __init__(self, config, **kwargs):
+        self.__class__.created_args.append((config, kwargs))
+        self._data = torch.arange(4, dtype=torch.float32)
+
+    def __len__(self):
+        return len(self._data)
+
+    def __getitem__(self, idx):
+        value = self._data[idx]
+        return value, value + 1
+
+
 def _install_module(monkeypatch, name, is_package=False, **attrs):
     module = types.ModuleType(name)
     if is_package:
@@ -206,6 +221,43 @@ def test_select_dataset_lrhr_folder_branch_missing_root_raises(monkeypatch, tmp_
 
     with pytest.raises(FileNotFoundError):
         dataset_selector.select_dataset(config)
+
+
+def test_select_dataset_sen2naip_uses_hardcoded_taco_and_training_config(monkeypatch):
+    _StubSEN2NAIPDataset.created_args.clear()
+    _install_module(monkeypatch, "opensr_srgan.data.sen2naip", is_package=True)
+    _install_module(
+        monkeypatch,
+        "opensr_srgan.data.sen2naip.sen2naip_dataset",
+        SEN2NAIP=_StubSEN2NAIPDataset,
+    )
+
+    monkeypatch.setattr(dataset_selector, "SEN2NAIP_TACO_FILE", "/tmp/hardcoded.taco")
+
+    config = _make_config(
+        dataset_type="sen2naip",
+        normalization="normalise_10k",
+        sen2naip_val_fraction=0.2,
+        train_batch_size=2,
+        val_batch_size=2,
+        num_workers=0,
+    )
+
+    datamodule = dataset_selector.select_dataset(config)
+    train_loader = datamodule.train_dataloader()
+    train_batch = next(iter(train_loader))
+
+    assert len(_StubSEN2NAIPDataset.created_args) == 2
+    train_cfg, train_kwargs = _StubSEN2NAIPDataset.created_args[0]
+    val_cfg, val_kwargs = _StubSEN2NAIPDataset.created_args[1]
+    assert train_cfg is config
+    assert val_cfg is config
+    assert train_kwargs["phase"] == "train"
+    assert val_kwargs["phase"] == "val"
+    assert train_kwargs["taco_file"] == "/tmp/hardcoded.taco"
+    assert val_kwargs["taco_file"] == "/tmp/hardcoded.taco"
+    assert isinstance(train_batch, (list, tuple))
+    assert len(train_batch) == 2
 
 
 def test_dataset_selector_module_main_guard(monkeypatch):

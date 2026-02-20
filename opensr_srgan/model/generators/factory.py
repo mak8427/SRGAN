@@ -291,6 +291,7 @@ def build_generator(config: Any) -> nn.Module:
         growth_channels = int(getattr(generator_cfg, "growth_channels", 32))
         res_scale = float(getattr(generator_cfg, "res_scale", 0.2))
         out_channels = int(getattr(generator_cfg, "out_channels", in_channels))
+        use_icnr = bool(getattr(generator_cfg, "use_icnr", True))
 
         _warn_overridden_options(
             "Generator",
@@ -312,6 +313,7 @@ def build_generator(config: Any) -> nn.Module:
             growth_channels=growth_channels,
             res_scale=res_scale,
             scale=scale,
+            use_icnr=use_icnr,
         )
 
     raise ValueError(

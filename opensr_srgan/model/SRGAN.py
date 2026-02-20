@@ -4,7 +4,6 @@ import time
 from contextlib import nullcontext
 from pathlib import Path
 from types import MethodType
-from typing import Optional
 
 import numpy as np
 import pytorch_lightning as pl
@@ -40,7 +39,7 @@ class SRGAN_model(pl.LightningModule):
     ------------
     - **Backbone flexibility:** Select generator/discriminator architectures via config.
     - **Training modes:** Generator pretraining, adversarial training, and LR warm-up.
-    - **PL compatibility:** Automatic optimization for PL < 2.0; manual optimization for PL ≥ 2.0.
+    - **Lightning 2+ training:** Manual optimization for multi-optimizer GAN updates.
     - **EMA support:** Optional EMA tracking with delayed activation and device placement.
     - **Metrics & logging:** Content/perceptual metrics, LR logging, and optional W&B image logs.
     - **Inference helpers:** Normalization/denormalization for 0–10000 reflectance and histogram matching.
@@ -77,10 +76,10 @@ class SRGAN_model(pl.LightningModule):
 
     Behavior & versioning
     ---------------------
-    - **PL ≥ 2.0**: Manual optimization (`automatic_optimization = False`). The bound
-    `training_step_PL2` performs explicit `zero_grad/step` calls and handles EMA updates.
-    - **PL < 2.0**: Automatic optimization. The legacy `training_step_PL1` is used, and
-    `optimizer_step` coordinates stepping and EMA after generator updates.
+    - **PyTorch Lightning ≥ 2.0** is required.
+    - Manual optimization (`automatic_optimization = False`) is used for GAN updates.
+    - The bound `training_step_PL2` helper performs explicit `zero_grad/step` calls and
+      handles EMA updates.
 
     Created attributes (non-exhaustive)
     -----------------------------------
@@ -143,11 +142,10 @@ class SRGAN_model(pl.LightningModule):
 
         # ======================================================================
         # SECTION: Set Variables
-        # Purpose: Set config and mode variables model-wide, including PL version.
+        # Purpose: Set config and mode variables model-wide.
         # ======================================================================
         self.config = config
         self.mode = mode
-        self.pl_version = tuple(int(x) for x in pl.__version__.split("."))
         self.normalizer = Normalizer(self.config)
 
         # ======================================================================
@@ -182,7 +180,7 @@ class SRGAN_model(pl.LightningModule):
 
         # ======================================================================
         # SECTION: Set up Training Strategy
-        # Purpose: Depending on PL version, set up optimizers, schedulers, etc.
+        # Purpose: Configure Lightning hooks and optimization mode.
         # ======================================================================
         self.setup_lightning()  # dynamically builds and attaches generator + discriminator
 
@@ -311,47 +309,24 @@ class SRGAN_model(pl.LightningModule):
                 )
 
     def setup_lightning(self):
-        """Configure PyTorch Lightning behavior based on the detected version.
-
-        This method ensures compatibility between different versions of
-        PyTorch Lightning (PL) by setting appropriate optimization modes
-        and binding the correct training step implementation.
-
-        - For PL ≥ 2.0: Enables **manual optimization**, required for GAN training.
-        - For PL < 2.0: Uses **automatic optimization** and the legacy training step.
-
-        The selected training step function (`training_step_PL1` or `training_step_PL2`)
-        is dynamically attached to the model as `_training_step_implementation`.
+        """Configure the Lightning 2+ training hooks for manual optimization.
 
         Raises:
-            AssertionError: If `automatic_optimization` is incorrectly set for PL < 2.0.
-            RuntimeError: If the detected PyTorch Lightning version is unsupported.
-
-        Attributes:
-            automatic_optimization (bool): Indicates whether Lightning manages
-                optimizer steps automatically.
-            _training_step_implementation (Callable): Bound training step function
-                corresponding to the active PL version.
+            RuntimeError: If the installed PyTorch Lightning major version is < 2.
         """
-        # Check for PL version - Define PL Hooks accordingly
-        if self.pl_version >= (2, 0, 0):
-            self.automatic_optimization = False  # manual optimization for PL 2.x
-            # Set up Training Step
-            from opensr_srgan.model.training_step_PL import training_step_PL2
-
-            self._training_step_implementation = MethodType(training_step_PL2, self)
-        elif self.pl_version < (2, 0, 0):
-            assert (
-                self.automatic_optimization is True
-            ), "For PL <2.0, automatic_optimization must be True."
-            # Set up Training Step
-            from opensr_srgan.model.training_step_PL import training_step_PL1
-
-            self._training_step_implementation = MethodType(training_step_PL1, self)
-        else:
+        major_token = str(pl.__version__).split(".", 1)[0]
+        major_digits = "".join(ch for ch in major_token if ch.isdigit())
+        major_version = int(major_digits) if major_digits else 0
+        if major_version < 2:
             raise RuntimeError(
-                f"Unsupported PyTorch Lightning version: {pl.__version__}"
+                "OpenSR-SRGAN requires PyTorch Lightning >= 2.0. "
+                f"Found version: {pl.__version__}."
             )
+
+        self.automatic_optimization = False  # manual optimization for Lightning 2+
+        from opensr_srgan.model.training_step_PL import training_step_PL2
+
+        self._training_step_implementation = MethodType(training_step_PL2, self)
 
     def initialize_ema(self):
         """Initialize the Exponential Moving Average (EMA) mechanism for the generator.
@@ -460,97 +435,9 @@ class SRGAN_model(pl.LightningModule):
         sr_imgs = sr_imgs.cpu().detach()  # detach from graph for inference output
         return sr_imgs
 
-    def training_step(
-        self, batch, batch_idx, optimizer_idx: Optional[int] = None, *args
-    ):
-        """Dispatch the correct training step implementation based on PyTorch Lightning version.
-
-        This method acts as a compatibility layer between different PyTorch Lightning
-        versions that handle multi-optimizer GAN training differently.
-
-        - For PL ≥ 2.0: Manual optimization is used, and the optimizer index is not passed.
-        - For PL < 2.0: Automatic optimization is used, and the optimizer index is passed
-        to handle generator/discriminator updates separately.
-
-        Args:
-            batch (Any): A batch of training data (input tensors and targets as defined by the DataModule).
-            batch_idx (int): Index of the current batch within the epoch.
-            optimizer_idx (int | None, optional): Index of the active optimizer (0 for generator,
-                1 for discriminator) when using PL < 2.0.
-            *args: Additional arguments that may be passed by older Lightning versions.
-
-        Returns:
-            Any: The output of the active training step implementation, loss value.
-        """
-        # Depending on PL version, and depending on the manual optimization
-        if self.pl_version >= (2, 0, 0):
-            # In PL2.x, optimizer_idx is not passed, manual optimization is performed
-            return self._training_step_implementation(batch, batch_idx)  # no optim_idx
-        else:
-            # In Pl1.x, optimizer_idx arrives twice and is passed on
-            return self._training_step_implementation(
-                batch, batch_idx, optimizer_idx
-            )  # pass optim_idx
-
-    def optimizer_step(
-        self,
-        epoch,
-        batch_idx,
-        optimizer,
-        optimizer_idx=None,
-        optimizer_closure=None,
-        **kwargs,  # absorbs on_tpu/using_lbfgs/etc across PL versions
-    ):
-        """Custom optimizer step handling for PL 1.x automatic optimization.
-
-        This method ensures correct behavior across different PyTorch Lightning
-        versions and training modes. It is invoked automatically during training
-        in PL < 2.0 when `automatic_optimization=True`. For PL ≥ 2.0, where manual
-        optimization is used, this function is effectively bypassed.
-
-        - In **PL ≥ 2.0 (manual optimization)**: The optimizer step is explicitly
-        called within `training_step_PL2()`, including EMA updates.
-        - In **PL < 2.0 (automatic optimization)**: This function manages optimizer
-        stepping, gradient zeroing, and optional EMA updates after generator steps.
-
-        Args:
-            epoch (int): Current training epoch.
-            batch_idx (int): Index of the current batch.
-            optimizer (torch.optim.Optimizer): The active optimizer instance.
-            optimizer_idx (int, optional): Index of the optimizer being stepped
-                (e.g., 0 for discriminator, 1 for generator).
-            optimizer_closure (Callable, optional): Closure for re-evaluating the
-                model and loss before optimizer step (used with some optimizers).
-            **kwargs: Additional arguments passed by PL depending on backend
-                (e.g., TPU flags, LBFGS options).
-
-        Notes:
-            - EMA updates are performed only after generator steps (optimizer_idx == 1).
-            - The update starts after `self._ema_update_after_step` global steps.
-
-        """
-        # If we're in manual optimization (PL >=2 path), do nothing special.
-        if not self.automatic_optimization:
-            # In manual mode we call opt.step()/zero_grad() in training_step_PL2.
-            # In manual mode, we update EMA weights manually in training step too.
-            return super().optimizer_step(
-                epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, **kwargs
-            )
-
-        # ---- PL 1.x auto-optimization path ----
-        if optimizer_closure is not None:
-            optimizer.step(closure=optimizer_closure)
-        else:
-            optimizer.step()
-        optimizer.zero_grad()
-
-        # EMA after the generator step (assumes G is optimizer_idx == 1)
-        if (
-            self.ema is not None
-            and optimizer_idx == 1
-            and self.global_step >= self._ema_update_after_step
-        ):
-            self.ema.update(self.generator)
+    def training_step(self, batch, batch_idx):
+        """Run one Lightning 2+ manual-optimization training step."""
+        return self._training_step_implementation(batch, batch_idx)
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
@@ -746,7 +633,7 @@ class SRGAN_model(pl.LightningModule):
 
     def configure_optimizers(self):
         """
-        Robust optimizers & schedulers for GANs (PL1 & PL2 compatible).
+        Robust optimizers & schedulers for GANs (Lightning 2+ manual optimization).
 
         - TTUR by default (D lr <= G lr)
         - Adam with GAN-friendly betas/eps
@@ -845,7 +732,6 @@ class SRGAN_model(pl.LightningModule):
             threshold_mode="rel",
             cooldown=int(getattr(cfg_sch, "cooldown", 0)),
             min_lr=float(getattr(cfg_sch, "min_lr", 1e-7)),
-            verbose=bool(getattr(cfg_sch, "verbose", False)),
         )
         # D can have its own factor/patience; fall back to G’s if not set
         sched_kwargs_d = dict(sched_kwargs)
@@ -882,16 +768,21 @@ class SRGAN_model(pl.LightningModule):
         warmup_steps = int(getattr(cfg_sch, "g_warmup_steps", 0))
         warmup_type = str(getattr(cfg_sch, "g_warmup_type", "none")).lower()
         if warmup_steps > 0 and warmup_type in {"linear", "cosine"}:
+            cfg_g_lr = float(getattr(cfg_opt, "optim_g_lr", 1e-4))
+            min_warmup_lr = 0.05 * cfg_g_lr
 
             def _g_warmup_lambda(step: int) -> float:
                 if step >= warmup_steps:
                     return 1.0
                 t = (step + 1) / max(1, warmup_steps)
-                return (
+                raw = (
                     t
                     if warmup_type == "linear"
                     else 0.5 * (1.0 - math.cos(math.pi * t))
                 )
+                # Clamp using an LR floor derived from configured generator LR.
+                target_lr = max(raw * cfg_g_lr, min_warmup_lr)
+                return target_lr / cfg_g_lr
 
             warmup_g = torch.optim.lr_scheduler.LambdaLR(
                 optimizer_g, lr_lambda=_g_warmup_lambda
