@@ -1,0 +1,63 @@
+project_name: "srgan"
+output_root: "../../runs"
+mode: "fused"
+
+environment:
+  python_executable: "python"
+  modules: ["cuda/12.1"]
+  conda_env: "srgan"
+
+aoi:
+  path: null
+  layer: null
+
+staging:
+  collection: "sentinel-2-l2a"
+  image_index: 0
+  edge_size: 4096
+  nodata: 0
+  output_dtype: "uint16"
+  compression: "deflate"
+  overlap_meters: 128.0
+  retry_on_rate_limit: true
+  rate_limit_retry_delays_seconds: [15, 30, 60, 120, 120, 120]
+
+rgbnir:
+  bands: ["B04", "B03", "B02", "B08"]
+  resolution: 10
+  factor: 4
+  model:
+    preset: "RGB-NIR"
+    config_path: null
+    checkpoint_path: null
+    cache_dir: null
+
+swir:
+  bands: ["B05", "B06", "B07", "B8A", "B11", "B12"]
+  resolution: 20
+  factor: 8
+  model:
+    preset: "SWIR"
+    config_path: null
+    checkpoint_path: null
+    cache_dir: null
+
+inference:
+  window_size: [128, 128]
+  batch_size: 16
+  overlap: 12
+  eliminate_border_px: 2
+  gpus: 0
+  save_preview: false
+
+slurm:
+  partition: "gpu"
+  gpu_type: "a100"
+  gpus: 1
+  gres: null
+  cpus_per_task: 16
+  mem_gb: 192
+  time: "02:00:00"
+  account: null
+  qos: null
+  extra_args: []
