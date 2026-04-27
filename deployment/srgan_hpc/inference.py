@@ -114,6 +114,6 @@ def run_inference(
 
     compressed_path = output_dir / product_output_name(product_name)
     LOGGER.info("compressing SR GeoTIFF product=%s input=%s output=%s", product_name, final_sr_path, compressed_path)
-    compress_geotiff(final_sr_path, compressed_path)
+    compress_geotiff(final_sr_path, compressed_path, band_names=product.bands)
     final_sr_path.unlink(missing_ok=True)
     return compressed_path

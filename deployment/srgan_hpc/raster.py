@@ -64,7 +64,14 @@ def compute_centroid_lat_lon(tif_path: Path) -> tuple[float, float]:
         return float(lat[0]), float(lon[0])
 
 
-def compress_geotiff(src_path: Path, dest_path: Path) -> Path:
+def _write_band_names(dataset, band_names: list[str]) -> None:
+    if len(band_names) == dataset.count:
+        for index, name in enumerate(band_names, start=1):
+            dataset.set_band_description(index, name)
+    dataset.update_tags(band_names=",".join(band_names))
+
+
+def compress_geotiff(src_path: Path, dest_path: Path, band_names: list[str] | None = None) -> Path:
     from rasterio.shutil import copy as rio_copy
 
     dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,6 +88,11 @@ def compress_geotiff(src_path: Path, dest_path: Path) -> Path:
         BIGTIFF="YES",
         NUM_THREADS="ALL_CPUS",
     )
+    if band_names is not None:
+        import rasterio
+
+        with rasterio.open(dest_path, "r+") as dst:
+            _write_band_names(dst, band_names)
     return dest_path
 
 
@@ -115,10 +127,7 @@ def stack_geotiffs(
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with rasterio.open(output_path, "w", **profile) as dst:
             dst.write(stacked)
-            if len(band_names) == stacked.shape[0]:
-                for index, name in enumerate(band_names, start=1):
-                    dst.set_band_description(index, name)
-            dst.update_tags(band_names=",".join(band_names))
+            _write_band_names(dst, band_names)
     return output_path
 
 

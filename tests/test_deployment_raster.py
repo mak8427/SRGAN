@@ -6,7 +6,7 @@ import numpy as np
 import rasterio
 from rasterio.transform import from_origin
 
-from deployment.srgan_hpc.raster import stack_geotiffs
+from deployment.srgan_hpc.raster import compress_geotiff, stack_geotiffs
 
 
 def _write_tif(path: Path, data: np.ndarray, transform) -> None:
@@ -48,3 +48,15 @@ def test_stack_geotiffs_reprojects_to_reference_grid_and_writes_band_names(tmp_p
         assert src.height == 8
         assert src.transform == from_origin(500000, 5100000, 2.5, 2.5)
         assert src.descriptions == ("B04", "B03", "B02", "B08", "B05", "B06", "B07", "B8A", "B11", "B12")
+
+
+def test_compress_geotiff_writes_band_names(tmp_path: Path) -> None:
+    source = tmp_path / "source.tif"
+    output = tmp_path / "rgbnir_sr.tif"
+    _write_tif(source, np.ones((4, 8, 8), dtype="uint16"), from_origin(500000, 5100000, 2.5, 2.5))
+
+    compress_geotiff(source, output, band_names=["B04", "B03", "B02", "B08"])
+
+    with rasterio.open(output) as src:
+        assert src.descriptions == ("B04", "B03", "B02", "B08")
+        assert src.tags()["band_names"] == "B04,B03,B02,B08"
