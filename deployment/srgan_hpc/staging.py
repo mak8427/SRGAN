@@ -47,7 +47,7 @@ def ensure_cube_has_valid_data(cube) -> dict[str, int]:
     return stats
 
 
-def is_rate_limit_error(exc: Exception) -> bool:
+def is_retryable_staging_error(exc: Exception) -> bool:
     status_code = getattr(exc, "status_code", None)
     response = getattr(exc, "response", None)
     response_status = getattr(response, "status_code", None)
@@ -55,8 +55,21 @@ def is_rate_limit_error(exc: Exception) -> bool:
         return True
 
     message = str(exc).lower()
-    markers = ["429", "too many requests", "rate limit", "rate-limit"]
+    markers = [
+        "429",
+        "too many requests",
+        "rate limit",
+        "rate-limit",
+        "maximum allowed time",
+        "request timed out",
+        "timeout",
+        "temporarily unavailable",
+    ]
     return any(marker in message for marker in markers)
+
+
+def is_rate_limit_error(exc: Exception) -> bool:
+    return is_retryable_staging_error(exc)
 
 
 def create_cube_with_retry(
@@ -91,12 +104,13 @@ def create_cube_with_retry(
                 resolution=resolution,
             )
         except Exception as exc:  # pragma: no cover
-            if not (config.retry_on_rate_limit and is_rate_limit_error(exc)):
+            if not (config.retry_on_rate_limit and is_retryable_staging_error(exc)):
                 raise
             LOGGER.warning(
-                "Rate limit detected during cubo staging for lat=%s lon=%s. Retrying in %s seconds (%s/%s).",
+                "Retryable cubo staging error for lat=%s lon=%s: %s. Retrying in %s seconds (%s/%s).",
                 latitude,
                 longitude,
+                exc,
                 delay,
                 attempt,
                 len(config.rate_limit_retry_delays_seconds),
